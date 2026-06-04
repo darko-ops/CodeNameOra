@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Dromo</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+
+	<!-- Section 7 — Location (GPS during run, including background) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Dromo uses your location to measure your running pace in real time.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Dromo tracks your pace continuously during runs, even when the screen is off.</string>
+
+	<!-- Apple Music library access -->
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Dromo plays music from your Apple Music library to match your running pace.</string>
+
+	<!-- Motion / step counting fallback -->
+	<key>NSMotionUsageDescription</key>
+	<string>Dromo uses motion data to detect your running cadence when GPS is unavailable.</string>
+
+	<!-- HealthKit -->
+	<key>NSHealthShareUsageDescription</key>
+	<string>Dromo reads heart rate data to provide pace guidance during runs.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Dromo saves your run workouts and routes to Apple Health.</string>
+
+	<!-- Background modes -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>audio</string>
+		<string>processing</string>
+	</array>
+
+	<!-- Spotify URL scheme query -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>spotify</string>
+	</array>
+
+	<!-- Dromo URL scheme (OAuth callbacks) -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dromo</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Section 8 — secrets surfaced from Secrets.xcconfig for Config.swift -->
+	<key>SPOTIFY_CLIENT_ID</key>
+	<string>$(SPOTIFY_CLIENT_ID)</string>
+		<key>SPOTIFY_CLIENT_SECRET</key>
+		<string>$(SPOTIFY_CLIENT_SECRET)</string>
+	<key>SUPABASE_URL</key>
+	<string>$(SUPABASE_URL)</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>REVENUECAT_API_KEY</key>
+	<string>$(REVENUECAT_API_KEY)</string>
+	<key>STRAVA_CLIENT_ID</key>
+	<string>$(STRAVA_CLIENT_ID)</string>
+	<key>STRAVA_CLIENT_SECRET</key>
+	<string>$(STRAVA_CLIENT_SECRET)</string>
+		<key>GETSONGBPM_API_KEY</key>
+		<string>$(GETSONGBPM_API_KEY)</string>
+	<key>SENTRY_DSN</key>
+	<string>$(SENTRY_DSN)</string>
+	<key>POSTHOG_API_KEY</key>
+	<string>$(POSTHOG_API_KEY)</string>
+</dict>
+</plist>

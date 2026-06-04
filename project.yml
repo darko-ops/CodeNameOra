@@ -1,0 +1,142 @@
+# Dromo — XcodeGen project definition (source of truth for Dromo.xcodeproj).
+# Regenerate the project with:  xcodegen generate
+#
+# The platform-agnostic engine (pace, gap, BPM, sequencer, domain models) lives
+# in the local DromoCore Swift package and is consumed here as a dependency — it is
+# deliberately NOT duplicated in the app target. See Packages/DromoCore.
+
+name: Dromo
+
+options:
+  bundleIdPrefix: com.daed
+  deploymentTarget:
+    iOS: "16.0"
+    watchOS: "9.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""        # set your Apple Developer Team ID for device builds
+
+# Section 8 — secrets are injected via an xcconfig that is gitignored.
+# Copy Secrets.example.xcconfig to Secrets.xcconfig and fill in real values.
+configFiles:
+  Debug: Secrets.xcconfig
+  Release: Secrets.xcconfig
+
+packages:
+  DromoCore:
+    path: Packages/DromoCore
+  # Section 2.5 — third-party dependencies (SPM)
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 6.0.0
+  KeychainAccess:
+    url: https://github.com/kishikawakatsumi/KeychainAccess
+    from: 4.2.0
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: 8.0.0
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    from: 3.0.0
+  RevenueCat:
+    url: https://github.com/RevenueCat/purchases-ios
+    from: 4.0.0
+
+targets:
+  Dromo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Dromo
+    dependencies:
+      - package: DromoCore
+      - package: GRDB
+      - package: KeychainAccess
+      - package: Sentry
+        product: Sentry
+      - package: PostHog
+        product: PostHog
+      - package: RevenueCat
+        product: RevenueCat
+      # Spotify App Remote playback (Section 6.3) is optional. OAuth + library +
+      # BPM work without it (system frameworks only). To enable in-app playback
+      # control, download SpotifyiOS.xcframework from developer.spotify.com, drop
+      # it into Frameworks/, and uncomment:
+      # - framework: Frameworks/SpotifyiOS.xcframework
+      #   embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daed.dromo
+        INFOPLIST_FILE: Dromo/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+
+  DromoWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: DromoWatch
+    dependencies:
+      - package: DromoCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daed.dromo.watchkitapp
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_WKApplication: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Dromo
+        ENABLE_PREVIEWS: YES
+
+  DromoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: DromoTests
+    dependencies:
+      - target: Dromo
+      - package: DromoCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daed.dromo.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  DromoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: DromoUITests
+    dependencies:
+      - target: Dromo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daed.dromo.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Dromo:
+    build:
+      targets:
+        Dromo: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - DromoTests
+        - DromoUITests
+  DromoWatch:
+    build:
+      targets:
+        DromoWatch: all
+    run:
+      config: Debug
