@@ -1,6 +1,15 @@
 """Runtime configuration. Postgres in production; SQLite for local/dev/tests."""
 import os
 
+try:
+    # Optional: load server/.env for local runs (uvicorn --reload). No-op if the
+    # package or file is absent — Docker/CI pass DATABASE_URL via the environment.
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ModuleNotFoundError:
+    pass
+
 
 class Settings:
     # Default to a local SQLite file so the app runs with zero infra.
