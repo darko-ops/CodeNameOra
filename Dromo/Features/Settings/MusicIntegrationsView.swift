@@ -18,6 +18,32 @@ struct MusicIntegrationsView: View {
                     .foregroundColor(.oraTextSecondary)
 
                 MusicProviderButtons()
+
+                if let email = coordinator.account.currentEmail {
+                    Divider().overlay(Color.oraTextMuted.opacity(0.3))
+
+                    VStack(alignment: .leading, spacing: Spacing.sm) {
+                        Text("Signed in as")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.oraTextMuted)
+                        Text(email)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.oraTextPrimary)
+
+                        Button(role: .destructive) {
+                            coordinator.signOut()
+                        } label: {
+                            Text("Sign Out")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.oraDestructive)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.oraSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .padding(.top, Spacing.xs)
+                    }
+                }
             }
             .padding(.horizontal, Spacing.screen)
             .padding(.vertical, Spacing.lg)

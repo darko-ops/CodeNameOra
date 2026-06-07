@@ -2,12 +2,13 @@ import SwiftUI
 import DromoCore
 
 /// Top-level navigation + shared state for the flow:
-/// Connect (Apple Music / Spotify) → Setup (pace / goal time) → Active → Summary.
+/// Auth (create account / sign in) → Setup (main tabs, with a one-time "add your
+/// music" popup) → Active → Summary.
 @MainActor
 final class AppCoordinator: ObservableObject {
 
     enum Screen: Equatable {
-        case connect
+        case auth
         case setup
         case session
         case summary
@@ -18,7 +19,18 @@ final class AppCoordinator: ObservableObject {
         case spotify = "Spotify"
     }
 
-    @Published private(set) var screen: Screen = .connect
+    /// Local mock auth (swappable for a real backend behind the same surface).
+    let account = AccountStore()
+
+    /// Start signed-in if a previous session was persisted; otherwise show auth.
+    @Published private(set) var screen: Screen
+
+    /// One-time "Add your music" popup, presented over the tabs right after sign-in.
+    @Published var showingMusicSetup = false
+
+    init() {
+        screen = account.isSignedIn ? .setup : .auth
+    }
 
     /// Tracks fetched from the connected provider (or demo tracks as a fallback).
     @Published private(set) var library: [Track] = []
@@ -74,8 +86,41 @@ final class AppCoordinator: ObservableObject {
 
         library = tracks
         startEnrichment(for: tracks)
-        withAnimation { screen = .setup }
+        // Note: connect() no longer drives navigation — sign-in owns entry to the
+        // tabs. It's called from the post-sign-in popup and the You-tab integrations
+        // page, both of which are already on `.setup`.
         return true
+    }
+
+    // MARK: - Auth (local mock)
+
+    /// Create an account or sign in, then advance to the tabs. On first sign-in with
+    /// no connected provider, surface the "Add your music" popup.
+    func authenticate(create: Bool, email: String, password: String) -> Result<Void, Error> {
+        do {
+            if create {
+                try account.createAccount(email: email, password: password)
+            } else {
+                try account.signIn(email: email, password: password)
+            }
+            withAnimation { screen = .setup }
+            if provider == nil { showingMusicSetup = true }
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// Sign out and reset music/session state, returning to the auth screen.
+    func signOut() {
+        account.signOut()
+        provider = nil
+        library = []
+        providerName = ""
+        bpmNote = nil
+        session = nil
+        showingMusicSetup = false
+        withAnimation { screen = .auth }
     }
 
     // MARK: - BPM enrichment (GetSongBPM)

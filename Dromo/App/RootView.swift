@@ -12,8 +12,8 @@ struct RootView: View {
             Color.oraBackground.ignoresSafeArea()
 
             switch coordinator.screen {
-            case .connect:
-                SignInView()
+            case .auth:
+                AuthView()
                     .transition(.opacity)
             case .setup:
                 MainTabView()
@@ -35,6 +35,9 @@ struct RootView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $coordinator.showingLibrary) {
             LibraryView()
+        }
+        .sheet(isPresented: $coordinator.showingMusicSetup) {
+            MusicSetupSheet()
         }
     }
 }
