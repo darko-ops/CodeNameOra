@@ -164,6 +164,22 @@ final class DatabaseManager {
             CREATE INDEX idx_playlist_tracks_playlist ON playlist_tracks(playlist_id);
             """)
         }
+
+        // LEARNED behavioral effectiveness — how well each track has moved THIS runner
+        // the right way, per pace mode (push/hold/settle). Demonstrated behavior, not
+        // stated taste; on-device only, NEVER uploaded to the Track Table (§5/§8).
+        migrator.registerMigration("v7_track_effectiveness") { db in
+            try db.execute(sql: """
+            CREATE TABLE track_effectiveness (
+                track_id TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                effectiveness REAL NOT NULL DEFAULT 0.5,
+                samples INTEGER NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+                PRIMARY KEY (track_id, mode)
+            );
+            """)
+        }
         return migrator
     }
 }

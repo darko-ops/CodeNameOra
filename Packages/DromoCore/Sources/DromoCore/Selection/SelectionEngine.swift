@@ -48,7 +48,8 @@ public struct SelectionEngine {
         targetCadence: Double,
         currentCadence: Double,
         candidates: [TrackFacts],
-        preferences: [String: Double] = [:]
+        preferences: [String: Double] = [:],
+        effectiveness: [String: Double] = [:]
     ) -> Decision? {
         guard !candidates.isEmpty else { return nil }
 
@@ -56,15 +57,14 @@ public struct SelectionEngine {
         let nudge = applyHysteresis(gap: gap)
         let desired = desiredBPM(targetCadence: targetCadence, gap: gap)
 
-        // Repeat-avoidance: skip recently played while alternatives remain.
-        var pool = candidates.filter { !recent.contains($0.id) }
-        if pool.isEmpty { pool = candidates }
-
-        // Deterministic ranking: score desc, then id asc to break ties.
+        // Rank ALL candidates on the blend — BPM shapes the score, it never gates a
+        // track out (repeats are a soft penalty inside `score`, not an exclusion).
+        // Deterministic: score desc, then id asc to break ties.
         var scored: [Scored] = []
-        for f in pool {
-            let s = score(f, desired: desired, target: targetCadence,
-                          gap: gap, preference: preferences[f.id] ?? 0)
+        for f in candidates {
+            let s = score(f, desired: desired, target: targetCadence, gap: gap,
+                          preference: preferences[f.id] ?? 0,
+                          effectiveness: effectiveness[f.id] ?? 0.5)
             scored.append(Scored(facts: f, score: s))
         }
         scored.sort { $0.score != $1.score ? $0.score > $1.score : $0.facts.id < $1.facts.id }
@@ -101,30 +101,60 @@ public struct SelectionEngine {
         return targetCadence + offset   // behind (gap>0) ⇒ push tempo up; ahead ⇒ down
     }
 
-    private func score(_ f: TrackFacts, desired: Double, target: Double,
-                       gap: Double, preference: Double) -> Double {
+    private func weights(_ mode: PaceMode) -> SelectionConfig.Weights {
+        switch mode {
+        case .push:   return config.pushWeights
+        case .hold:   return config.holdWeights
+        case .settle: return config.settleWeights
+        }
+    }
+
+    /// "Good energy" depends on the moment: drive when pushing, calm when settling,
+    /// steady-moderate when holding.
+    private func energySubscore(_ energy: Double, _ mode: PaceMode) -> Double {
+        switch mode {
+        case .push:   return energy                       // reward driving tracks
+        case .settle: return 1 - energy                   // reward calm
+        case .hold:   return 1 - abs(energy - 0.5) * 2    // reward moderate
+        }
+    }
+
+    /// Soft repeat penalty: full hit for the most-recent pick, decaying to ~0 across
+    /// the window. Variety by default, but a clearly-better track can still repeat.
+    private func repeatPenalty(_ id: String) -> Double {
+        guard let idx = recent.lastIndex(of: id) else { return 0 }
+        let fromEnd = recent.count - 1 - idx                       // 0 = most recent
+        let decay = max(0, 1 - Double(fromEnd) / Double(max(1, config.recentWindow)))
+        return config.repeatPenalty * decay
+    }
+
+    /// A single "how good is this track right now" score: a mode-weighted blend of
+    /// tempo fit + (mode-appropriate) energy + beat strength, plus learned taste, with
+    /// confidence as a multiplier and recency as a soft deduction. BPM is one input —
+    /// never a gate — so a high-energy off-tempo track can win when the moment needs a push.
+    ///
+    /// `effectiveness` (0…1, 0.5 = neutral) is the LEARNED behavioral signal — how well
+    /// this track has moved *this* runner in this mode before. It's added outside the
+    /// confidence multiplier (it's ground truth, not a metadata guess) and can flip the
+    /// ranking once earned, which is the point: behavior teaches the engine.
+    private func score(_ f: TrackFacts, desired: Double, target: Double, gap: Double,
+                       preference: Double, effectiveness: Double) -> Double {
+        let mode = PaceMode(gap: gap, onPaceTolerance: config.onPaceTolerance)
+        let w = weights(mode)
+
         let eff = effectiveBPM(f, targetCadence: target)
-        let closeness = max(0, 1 - abs(eff - desired) / config.bpmTolerance)
-
-        // Directional energy: behind → favor high energy/drive, ahead → calmer,
-        // on pace → favor moderate.
-        let energy = f.energy ?? 0.5
-        let directionalEnergy: Double
-        if gap > config.onPaceTolerance { directionalEnergy = energy }
-        else if gap < -config.onPaceTolerance { directionalEnergy = 1 - energy }
-        else { directionalEnergy = 1 - abs(energy - 0.5) * 2 }
-
+        let tempoFit = max(0, 1 - abs(eff - desired) / config.bpmTolerance)
+        let energy = energySubscore(f.energy ?? 0.5, mode)
         let beat = f.beatStrength ?? 0.5
 
-        let closenessTerm = config.bpmMatchWeight * closeness
-        let energyTerm = config.energyWeight * directionalEnergy
-        let beatTerm = config.beatStrengthWeight * beat
-        let preferenceTerm = config.preferenceWeight * preference
-        var s = closenessTerm + energyTerm + beatTerm + preferenceTerm
+        // Merit: the mode-weighted blend + learned taste, discounted if low-confidence.
+        var merit = w.tempo * tempoFit + w.energy * energy + w.beat * beat
+        merit += config.preferenceWeight * preference
+        if f.bpmConfidence < config.confidenceThreshold { merit *= config.lowConfidencePenalty }
 
-        // Prefer confident readings; low-confidence is a last resort.
-        if f.bpmConfidence < config.confidenceThreshold { s *= config.lowConfidencePenalty }
-        return s
+        // Behavioral effectiveness (±) and recency penalty sit OUTSIDE that discount.
+        let behavior = config.effectivenessWeight * (effectiveness - 0.5) * 2
+        return merit + behavior - repeatPenalty(f.id)
     }
 
     /// Schmitt trigger on the cadence gap → nudge, so small wobble near a threshold

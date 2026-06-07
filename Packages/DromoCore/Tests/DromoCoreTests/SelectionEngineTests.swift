@@ -102,6 +102,63 @@ final class SelectionEngineTests: XCTestCase {
         XCTAssertEqual(Set(picks).count, 3, "should not repeat within the window")
     }
 
+    // MARK: Blend-not-gate: weights shift with intent
+
+    /// The core "feels like a DJ" property: behind pace, a high-energy track that's a
+    /// few BPM off should BEAT a perfectly-on-tempo low-energy track — and on pace, the
+    /// same two tracks should flip, the steady on-target one winning. Same candidates,
+    /// different moment, different winner.
+    func testModeWeightsFlipWinnerByIntent() {
+        let steady = facts("steady", bpm: 182, energy: 0.2, beat: 0.6)   // on-target, sleepy
+        let banger = facts("banger", bpm: 176, energy: 0.95, beat: 0.8)  // ~6 off, driving
+
+        // Behind pace (push): the off-tempo banger should win.
+        var pushing = SelectionEngine()
+        let push = pushing.selectNext(targetCadence: 170, currentCadence: 150,
+                                      candidates: [steady, banger])
+        XCTAssertEqual(push?.trackID, "banger", "off-tempo energy should win the push")
+        XCTAssertEqual(push?.nudge, .speedUp)
+
+        // On pace (hold) with the banger now on target distance: the steady track wins.
+        var holding = SelectionEngine()
+        let hold = holding.selectNext(targetCadence: 182, currentCadence: 182,
+                                      candidates: [steady, banger])
+        XCTAssertEqual(hold?.trackID, "steady", "on pace, lock the on-target groove")
+        XCTAssertEqual(hold?.nudge, .hold)
+    }
+
+    /// Soft repeat penalty (not a hard exclusion): a clearly-dominant track may play
+    /// again rather than ceding to a far-worse alternative.
+    /// The learning loop's payoff: a track that's a worse tempo match but has PROVEN it
+    /// moves this runner (high learned effectiveness) should win over the tidy on-tempo
+    /// pick — behavior overriding metadata, which is the whole point.
+    func testLearnedEffectivenessOverridesTempoMatch() {
+        var engine = SelectionEngine()
+        let onTempo = facts("onTempo", bpm: 170, energy: 0.5)   // perfect match, unproven
+        let proven  = facts("proven",  bpm: 162, energy: 0.5)   // off-tempo, but it works
+
+        // With no learning, the on-tempo track wins.
+        var cold = engine
+        XCTAssertEqual(cold.selectNext(targetCadence: 170, currentCadence: 170,
+                                       candidates: [onTempo, proven])?.trackID, "onTempo")
+
+        // Once "proven" has earned high effectiveness, it wins despite the worse tempo.
+        let d = engine.selectNext(targetCadence: 170, currentCadence: 170,
+                                  candidates: [onTempo, proven],
+                                  effectiveness: ["proven": 1.0])
+        XCTAssertEqual(d?.trackID, "proven")
+    }
+
+    func testDominantTrackCanRepeatThroughSoftPenalty() {
+        var engine = SelectionEngine()
+        let pool = [facts("great", bpm: 170, energy: 0.9, beat: 0.9),
+                    facts("weak", bpm: 130, energy: 0.1, beat: 0.1)]
+        let first = engine.selectNext(targetCadence: 170, currentCadence: 170, candidates: pool)
+        let second = engine.selectNext(targetCadence: 170, currentCadence: 170, candidates: pool)
+        XCTAssertEqual(first?.trackID, "great")
+        XCTAssertEqual(second?.trackID, "great", "a dominant track survives the soft penalty")
+    }
+
     func testDeterministic() {
         var a = SelectionEngine(), b = SelectionEngine()
         let pool = [facts("x", bpm: 165), facts("y", bpm: 175), facts("z", bpm: 185)]

@@ -51,6 +51,9 @@ public actor LiveLoop {
     private var candidates: [TrackFacts]
     private var smoother: CadenceSmoother
     private var preferences: [String: Double]
+    /// Learned behavioral effectiveness, per mode: [mode: [trackID: 0…1]]. Selection
+    /// uses the sub-map for the mode in effect at pick time.
+    private var effectivenessByMode: [PaceMode: [String: Double]] = [:]
     private let config: Config
     private let targetCadence: Double
 
@@ -129,17 +132,28 @@ public actor LiveLoop {
         preferences = newPreferences
     }
 
+    /// Update the learned behavioral effectiveness (per mode) mid-session, so what the
+    /// runner's response taught us steers the very next selection.
+    public func updateEffectiveness(_ byMode: [PaceMode: [String: Double]]) {
+        effectivenessByMode = byMode
+    }
+
     private func selectAndPlay() async {
         var skipped = 0
         // Keep trying down the ranked pool until something actually plays. (Don't cap
         // at a few retries — unplayable candidates, e.g. catalog tracks with no audio,
         // could otherwise starve a fully-playable real library.)
         while true {
+            // Behavioral effectiveness is keyed per mode; pick the sub-map for the mode
+            // in effect right now (same classification the engine will use).
+            let mode = PaceMode(gap: targetCadence - state.currentCadence,
+                                onPaceTolerance: engine.config.onPaceTolerance)
             guard let decision = engine.selectNext(
                 targetCadence: targetCadence,
                 currentCadence: state.currentCadence,
                 candidates: candidates,
-                preferences: preferences
+                preferences: preferences,
+                effectiveness: effectivenessByMode[mode] ?? [:]
             ) else {
                 state.nowPlayingTrackID = nil
                 log?("⚠️ no playable track — gave up after skipping \(skipped) "
