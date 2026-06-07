@@ -9,6 +9,9 @@ struct PlaylistsView: View {
     @EnvironmentObject private var nowPlaying: NowPlayingController
     @StateObject private var vm = PlaylistsViewModel()
     @State private var showingCreate = false
+    @State private var renameTarget: Playlist?
+    @State private var renameText = ""
+    @State private var deleteTarget: Playlist?
 
     private let twoColumns = [
         GridItem(.flexible(), spacing: Spacing.md),
@@ -42,6 +45,31 @@ struct PlaylistsView: View {
                 await vm.createPlaylist(name: name, trackIDs: ids)
             }
         }
+        .alert("Rename playlist",
+               isPresented: Binding(get: { renameTarget != nil },
+                                    set: { if !$0 { renameTarget = nil } })) {
+            TextField("Playlist name", text: $renameText)
+            Button("Save") {
+                if let target = renameTarget {
+                    Task { await vm.renamePlaylist(id: target.id, name: renameText) }
+                }
+                renameTarget = nil
+            }
+            Button("Cancel", role: .cancel) { renameTarget = nil }
+        }
+        .alert("Delete playlist?",
+               isPresented: Binding(get: { deleteTarget != nil },
+                                    set: { if !$0 { deleteTarget = nil } })) {
+            Button("Delete", role: .destructive) {
+                if let target = deleteTarget {
+                    Task { await vm.deletePlaylist(target.id) }
+                }
+                deleteTarget = nil
+            }
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
+        } message: {
+            Text(deleteTarget.map { "“\($0.name)” will be removed." } ?? "")
+        }
     }
 
     // MARK: - Your playlists (user-created) — 2-col grid (max 6) + create
@@ -62,6 +90,15 @@ struct PlaylistsView: View {
                             userPlaylistCard(playlist)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                renameText = playlist.name
+                                renameTarget = playlist
+                            } label: { Label("Rename", systemImage: "pencil") }
+                            Button(role: .destructive) {
+                                deleteTarget = playlist
+                            } label: { Label("Delete", systemImage: "trash") }
+                        }
                     }
                 }
                 .padding(.horizontal, Spacing.screen)
