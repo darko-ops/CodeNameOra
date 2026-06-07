@@ -14,6 +14,7 @@ import DromoCore
 final class AppleMusicProvider: MusicProviderProtocol {
 
     private let player = MPMusicPlayerController.applicationMusicPlayer
+    private let catalogResolver = CatalogISRCResolver()
     /// Library had songs, but none carried a BPM tag.
     private(set) var lastLibraryHadNoBPM = false
     /// No songs at all (e.g. the Simulator, which has no Music library).
@@ -66,5 +67,19 @@ final class AppleMusicProvider: MusicProviderProtocol {
         let predicate = MPMediaPropertyPredicate(
             value: persistentID, forProperty: MPMediaItemPropertyPersistentID)
         return MPMediaQuery(filterPredicates: [predicate]).items?.first?.assetURL
+    }
+
+    /// Resolves ISRC for DRM / cloud tracks via the Apple Music catalog: the local
+    /// item has no `assetURL`/tag, but its `playbackStoreID` is the catalog ID, which
+    /// maps to a `Song` carrying the ISRC. This is what lets a streaming-only library
+    /// key into the Global Track Table (see `CatalogISRCResolver`).
+    func catalogISRC(forTrackID id: String) async -> String? {
+        guard let persistentID = UInt64(id) else { return nil }
+        let predicate = MPMediaPropertyPredicate(
+            value: persistentID, forProperty: MPMediaItemPropertyPersistentID)
+        guard let item = MPMediaQuery(filterPredicates: [predicate]).items?.first else {
+            return nil
+        }
+        return await catalogResolver.isrc(forStoreID: item.playbackStoreID)
     }
 }
