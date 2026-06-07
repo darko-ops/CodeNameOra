@@ -59,6 +59,9 @@ struct LibraryView: View {
         }
         .preferredColorScheme(.dark)
         .task { await vm.load() }
+        .onReceive(NotificationCenter.default.publisher(for: .dromoSessionSaved)) { _ in
+            Task { await vm.load() }
+        }
     }
 
     // MARK: - Momentum (stats dashboard)
