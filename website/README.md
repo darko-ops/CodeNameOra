@@ -14,27 +14,31 @@ python3 -m http.server 8000
 
 (Any static server works — opening `index.html` directly is fine too.)
 
-## Deploy to dromo.fit
+## Deploy to dromo.fit (Vercel)
 
-Because it's plain static files, any static host serves it. The whole site is this
-folder; point the host's root/publish directory at `website/`.
+The GitHub repo is connected to a Vercel project, and `dromo.fit` (registered at
+GoDaddy) is added as a custom domain. Vercel auto-deploys on push to `main`.
 
-- **Vercel / Netlify / Cloudflare Pages:** new project from this repo, set the
-  output/publish directory to `website`, no build command. Then add `dromo.fit` as a
-  custom domain and follow the DNS instructions (usually a CNAME / A record).
-- **GitHub Pages:** publish the `website/` folder and add a `CNAME` file containing
-  `dromo.fit`, then set the apex/`www` DNS records per GitHub's docs.
+**Critical setting:** the site lives in this `website/` subfolder, so the Vercel
+project's **Root Directory must be `website`** (Project → Settings → Build &
+Deployment → Root Directory). Otherwise Vercel serves the repo root and 404s.
+`vercel.json` (in this folder) sets clean URLs + security/cache headers; no build step.
 
-## Before launch — two TODOs
+**DNS at GoDaddy** (apex + www), as Vercel instructs:
+- `A` record, host `@` → `76.76.21.21`
+- `CNAME` record, host `www` → `cname.vercel-dns.com`
 
-1. **Waitlist destination.** In `script.js`, `WAITLIST_ENDPOINT` is empty, so sign-ups
-   are validated and stored in `localStorage` (nothing is lost, but nothing is sent).
-   Set it to a POST endpoint that accepts `{ email }` — e.g. Formspree/Buttondown — or
-   wire it to Supabase (project `prftbirfbzhdacuenatw`): create a `waitlist` table with
-   an INSERT-only anon RLS policy and POST to its REST endpoint with the anon key.
-2. **Social image.** The `og:image` / `twitter:image` tags point at
-   `https://dromo.fit/og-image.png`. Drop a 1200×630 PNG named `og-image.png` in this
-   folder so link previews render.
+Vercel provisions the HTTPS cert automatically once DNS resolves.
+
+## Remaining TODO
+
+**Waitlist destination.** In `script.js`, `WAITLIST_ENDPOINT` is empty, so sign-ups are
+validated and stored in `localStorage` (nothing is lost, but nothing is sent). Set it
+to a POST endpoint that accepts `{ email }` — e.g. Formspree/Buttondown — or wire it to
+Supabase (project `prftbirfbzhdacuenatw`): create a `waitlist` table with an INSERT-only
+anon RLS policy and POST to its REST endpoint with the anon key.
+
+(The `og:image` is in place — `og-image.png`, 1200×630.)
 
 ## Copy notes
 
