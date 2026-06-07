@@ -13,6 +13,9 @@ final class LiveSessionViewModel: ObservableObject {
 
     @Published private(set) var state: LoopState
 
+    /// Standing pace-deviation state for the HUD overlay (nil = on pace / unknown).
+    @Published private(set) var paceAlert: PaceAlertMonitor.PaceAlert?
+
     let labelsByID: [String: String]
 
     private let tracks: [Track]
@@ -23,6 +26,23 @@ final class LiveSessionViewModel: ObservableObject {
     private let source = PaceCadenceSource()
     private let playback = MediaPlayerPlaybackController()
     private var loop: LiveLoop?
+
+    /// Hard ±20 s/km pace alarm: beeps (slow vs fast) over ducked music, repeating
+    /// every 30 s while out of range. Separate from the engine's gentle music nudge.
+    private var paceAlerts = PaceAlertMonitor()
+    private let alertPlayer = PaceAlertPlayer()
+
+    /// Behavioral learning loop: attribute the runner's pace response to the playing
+    /// track, learn per-(track, mode) effectiveness, and feed it back into selection.
+    private var attributor = PaceResponseAttributor()
+    private let effStore = GRDBEffectivenessStore()
+
+    /// Persists this run (session + pace log + track plays) so it shows on the You-tab
+    /// dashboard / Goals / Sessions list — the same path the old flow used.
+    private var recorder: LiveRunRecorder?
+    private let sessionRepo = SessionRepository()
+    /// Ignore accidental opens — only persist runs of at least this length.
+    private let minRunSeconds = 30
 
     /// Debug sink — shows in Xcode console and Console.app (subsystem com.daed.dromo,
     /// category "livesession"). Sendable so it can be handed to the LiveLoop actor.
@@ -117,6 +137,11 @@ final class LiveSessionViewModel: ObservableObject {
                                 targetPaceSecPerKm: targetPaceSecPerKm, log: Self.log)
             self.loop = loop
             wire(loop)
+            recorder = LiveRunRecorder(targetPaceSecPerKm: targetPaceSecPerKm,
+                                       startedAt: Date(), tracks: tracks)
+            // Prime the loop with what past runs learned, so even the FIRST pick this
+            // session benefits from the runner's demonstrated response.
+            await loop.updateEffectiveness(effStore.allByMode())
             source.start()
             self.state = await loop.start()
             await applyPreferenceWeights()   // carry over taste from past sessions
@@ -132,7 +157,29 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
-    func stop() { source.stop() }
+    func stop() {
+        source.stop()
+        paceAlert = nil
+        // Close out the final track so its response is learned too.
+        if let response = attributor.flush() {
+            Task { await effStore.record(response) }
+        }
+        // Persist the run (unless it was an accidental, too-short open).
+        if var recorder {
+            let session = recorder.finish(at: Date())
+            self.recorder = nil
+            if session.elapsedSeconds >= minRunSeconds {
+                let repo = sessionRepo
+                Task {
+                    try? await repo.save(session)
+                    // Tell the You-tab dashboard to refresh, even if it's already on screen.
+                    await MainActor.run {
+                        NotificationCenter.default.post(name: .dromoSessionSaved, object: nil)
+                    }
+                }
+            }
+        }
+    }
 
     // MARK: - Resolution
 
@@ -151,9 +198,15 @@ final class LiveSessionViewModel: ObservableObject {
                 urls[entry.localID] = url
                 if let isrc = await ISRCReader.isrc(from: url) {
                     identity = IdentityKey(isrc: isrc)
-                    identityByLocalID[entry.localID] = identity   // for objective feedback
                 }
             }
+            // DRM / cloud fallback: no local file or tag → resolve ISRC from the
+            // Apple Music catalog (playbackStoreID → Song.isrc). This is what lets a
+            // streaming-only library key into the Global Track Table.
+            if identity == nil, let isrc = await provider.catalogISRC(forTrackID: entry.localID) {
+                identity = IdentityKey(isrc: isrc)
+            }
+            if let identity { identityByLocalID[entry.localID] = identity }   // for objective feedback
             enriched.append(LibraryEntry(
                 localID: entry.localID, identity: identity, providerBPM: entry.providerBPM,
                 energy: entry.energy, durationMs: entry.durationMs))
@@ -181,8 +234,35 @@ final class LiveSessionViewModel: ObservableObject {
     private func wire(_ loop: LiveLoop) {
         source.onSample = { [weak self] cadence, pace in
             Task { @MainActor in
+                guard let self else { return }
                 let s = await loop.ingest(rawCadence: cadence, paceSecPerKm: pace)
-                self?.state = s
+                self.state = s
+                // Hard pace-deviation alarm (±20 s/km). systemUptime is a monotonic
+                // clock — correct for the 30 s repeat interval regardless of wall time.
+                if let alert = self.paceAlerts.evaluate(
+                    currentPaceSecPerKm: s.currentPaceSecPerKm,
+                    targetPaceSecPerKm: s.targetPaceSecPerKm,
+                    now: ProcessInfo.processInfo.systemUptime) {
+                    self.alertPlayer.play(alert)
+                }
+                // Standing state drives the HUD overlay (beep is the momentary trigger).
+                self.paceAlert = self.paceAlerts.activeAlert
+
+                // Behavioral learning: attribute this sample to the playing track. On a
+                // track change, persist the finished track's response and feed the
+                // freshly-learned effectiveness back so the NEXT pick uses it.
+                if let response = self.attributor.observe(
+                    trackID: s.nowPlayingTrackID,
+                    targetCadence: s.targetCadence,
+                    currentCadence: s.currentCadence) {
+                    await self.effStore.record(response)
+                    await loop.updateEffectiveness(self.effStore.allByMode())
+                }
+
+                // Record the run for the dashboard (distance, pace log, track plays).
+                self.recorder?.sample(paceSecPerKm: s.currentPaceSecPerKm,
+                                      bpm: s.nowPlayingBPM ?? 0,
+                                      trackID: s.nowPlayingTrackID, at: Date())
             }
         }
         playback.onAdvance = { [weak self] in

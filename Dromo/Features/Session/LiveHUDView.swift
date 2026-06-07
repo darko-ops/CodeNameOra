@@ -21,6 +21,8 @@ struct LiveHUDView: View {
             .padding(.horizontal, Spacing.screen)
             .padding(.vertical, Spacing.xl)
         }
+        .overlay { paceAlertOverlay }
+        .animation(.easeInOut(duration: 0.4), value: vm.paceAlert)
         .overlay(alignment: .topTrailing) {
             Button("End") { dismiss() }
                 .font(.system(size: 15, weight: .semibold))
@@ -30,6 +32,40 @@ struct LiveHUDView: View {
         .preferredColorScheme(.dark)
         .onAppear { vm.start() }
         .onDisappear { vm.stop() }
+    }
+
+    // MARK: Pace-deviation overlay
+
+    /// A central radial glow + message that fades in while the runner is outside the
+    /// ±20 s/km band — the visual companion to the beep. Distinct color per direction.
+    @ViewBuilder
+    private var paceAlertOverlay: some View {
+        if let alert = vm.paceAlert {
+            let tint: Color = alert == .tooSlow ? .zonePeak : .zoneWarmUp
+            let title = alert == .tooSlow ? "TOO SLOW" : "TOO FAST"
+            let subtitle = alert == .tooSlow ? "Pick up the pace" : "Ease off"
+
+            ZStack {
+                RadialGradient(
+                    colors: [tint.opacity(0.45), tint.opacity(0.12), .clear],
+                    center: .center, startRadius: 0, endRadius: 360)
+                    .ignoresSafeArea()
+
+                VStack(spacing: Spacing.sm) {
+                    Image(systemName: alert == .tooSlow ? "hare.fill" : "tortoise.fill")
+                        .font(.system(size: 40, weight: .bold))
+                    Text(title)
+                        .font(.system(size: 44, weight: .black, design: .rounded))
+                    Text(subtitle)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.oraTextSecondary)
+                }
+                .foregroundColor(tint)
+                .shadow(color: tint.opacity(0.5), radius: 16)
+            }
+            .allowsHitTesting(false)   // never blocks the End button / feedback controls
+            .transition(.opacity)
+        }
     }
 
     // MARK: Nudge
