@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Dromo — Run to the beat. Hit your pace.</title>
+  <meta name="description" content="Dromo matches your music's tempo to your running cadence in real time, so every step lands on the beat. Pace-adaptive running music for iOS, built privacy-first." />
+  <meta name="theme-color" content="#080A0E" />
+  <link rel="canonical" href="https://dromo.fit/" />
+
+  <!-- Open Graph / social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://dromo.fit/" />
+  <meta property="og:title" content="Dromo — Run to the beat. Hit your pace." />
+  <meta property="og:description" content="Pace-adaptive running music that locks your library to your cadence. Coming to iOS." />
+  <meta property="og:image" content="https://dromo.fit/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Dromo — Run to the beat. Hit your pace." />
+  <meta name="twitter:description" content="Pace-adaptive running music that locks your library to your cadence. Coming to iOS." />
+  <meta name="twitter:image" content="https://dromo.fit/og-image.png" />
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Nav -->
+  <header class="nav">
+    <div class="container nav__inner">
+      <a class="brand" href="#top" aria-label="Dromo home">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
+            <rect x="2" y="13" width="3.5" height="6" rx="1.75" fill="currentColor"/>
+            <rect x="8" y="9" width="3.5" height="14" rx="1.75" fill="currentColor"/>
+            <rect x="14" y="4" width="3.5" height="24" rx="1.75" fill="currentColor"/>
+            <rect x="20" y="9" width="3.5" height="14" rx="1.75" fill="currentColor"/>
+            <rect x="26" y="13" width="3.5" height="6" rx="1.75" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="brand__name">Dromo</span>
+      </a>
+      <nav class="nav__links">
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#privacy">Privacy</a>
+        <a class="btn btn--small" href="#waitlist">Join the waitlist</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container hero__inner">
+        <div class="hero__copy">
+          <p class="eyebrow">Pace-adaptive running music · Coming to iOS</p>
+          <h1 class="hero__title">Run to the beat.<br /><span class="accent">Hit your pace.</span></h1>
+          <p class="hero__sub">
+            Dromo reads your running cadence and serves music whose tempo matches your stride —
+            then nudges you faster or slower to keep you on target. Your library, locked to your pace.
+          </p>
+
+          <form id="waitlist-hero" class="waitlist" novalidate>
+            <input type="email" name="email" inputmode="email" autocomplete="email"
+                   placeholder="you@email.com" aria-label="Email address" required />
+            <button class="btn" type="submit">Get early access</button>
+          </form>
+          <p class="waitlist__note" id="waitlist-hero-note">Be first to run with Dromo. No spam — just launch news.</p>
+        </div>
+
+        <div class="hero__visual" aria-hidden="true">
+          <div class="phone">
+            <div class="phone__notch"></div>
+            <div class="phone__screen">
+              <p class="phone__label">CADENCE</p>
+              <p class="phone__bpm"><span id="bpm-readout">168</span><small>spm</small></p>
+              <div class="equalizer">
+                <span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
+              <div class="phone__now">
+                <div class="phone__art"></div>
+                <div>
+                  <p class="phone__track">Now matching</p>
+                  <p class="phone__meta">168 BPM · on target</p>
+                </div>
+              </div>
+              <div class="nudge">Hold pace ✓</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how" class="section">
+      <div class="container">
+        <h2 class="section__title">Three numbers, perfectly in sync</h2>
+        <p class="section__lede">Pace in, beat out. Dromo closes the loop between your body and your playlist.</p>
+        <ol class="steps">
+          <li class="step">
+            <span class="step__num">1</span>
+            <h3>It reads your stride</h3>
+            <p>GPS pace and pedometer cadence tell Dromo exactly how fast your feet are turning over — live, every second.</p>
+          </li>
+          <li class="step">
+            <span class="step__num">2</span>
+            <h3>It matches the tempo</h3>
+            <p>Dromo picks tracks from your own library whose BPM lands on your cadence, so the beat falls under every footstrike.</p>
+          </li>
+          <li class="step">
+            <span class="step__num">3</span>
+            <h3>It keeps you honest</h3>
+            <p>Drifting off target? Dromo eases the tempo up or down to pull your pace back — no fiddling mid-run.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="section section--alt">
+      <div class="container">
+        <h2 class="section__title">Built for the run</h2>
+        <div class="features">
+          <article class="feature">
+            <div class="feature__icon">⚡</div>
+            <h3>Real-time pace lock</h3>
+            <p>A runtime engine continuously tunes your music to your target pace — hands-free from the first step to the last.</p>
+          </article>
+          <article class="feature">
+            <div class="feature__icon">🎧</div>
+            <h3>Your own music</h3>
+            <p>Connect Apple Music and run to the songs you already love, re-sorted by tempo instead of by album.</p>
+          </article>
+          <article class="feature">
+            <div class="feature__icon">🎯</div>
+            <h3>Pace targets &amp; goals</h3>
+            <p>Set a goal pace or race time. Dromo translates it into a cadence and drives the music to meet it.</p>
+          </article>
+          <article class="feature">
+            <div class="feature__icon">📈</div>
+            <h3>Momentum that builds</h3>
+            <p>Streaks, sessions, and a tempo profile of your library that gets sharper the more you run.</p>
+          </article>
+          <article class="feature">
+            <div class="feature__icon">⌚</div>
+            <h3>Glanceable HUD</h3>
+            <p>Pace, cadence, and now-playing on a clean live screen — and on your wrist when you need it.</p>
+          </article>
+          <article class="feature">
+            <div class="feature__icon">🔒</div>
+            <h3>Privacy by design</h3>
+            <p>Analysis happens on your device. Only numbers ever leave it — never your audio.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Privacy -->
+    <section id="privacy" class="section">
+      <div class="container privacy">
+        <div class="privacy__copy">
+          <p class="eyebrow">The line we don't cross</p>
+          <h2 class="section__title">Your music stays yours</h2>
+          <p>
+            Dromo analyzes tempo right on your iPhone, against music that's already there. The only thing
+            that ever leaves your device is a number — a song's beats-per-minute — never a single second of audio.
+          </p>
+          <p>
+            That discipline builds something useful: a shared map of tempo facts that makes the next run start
+            instantly, without re-analyzing the same song twice. Facts about music, not copies of it.
+          </p>
+        </div>
+        <ul class="privacy__list">
+          <li><strong>On-device analysis</strong><span>Tempo is computed locally, never in the cloud.</span></li>
+          <li><strong>Numbers only</strong><span>BPM and energy leave the phone — audio never does.</span></li>
+          <li><strong>No account required to run</strong><span>Connect a service when you want; skip it when you don't.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section id="waitlist" class="cta">
+      <div class="container cta__inner">
+        <h2>Be first on the start line</h2>
+        <p>Dromo is coming to iOS. Join the waitlist and we'll let you know the moment it's ready.</p>
+        <form id="waitlist-cta" class="waitlist waitlist--center" novalidate>
+          <input type="email" name="email" inputmode="email" autocomplete="email"
+                 placeholder="you@email.com" aria-label="Email address" required />
+          <button class="btn" type="submit">Join the waitlist</button>
+        </form>
+        <p class="waitlist__note" id="waitlist-cta-note">No spam — just launch news.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="22" height="22" fill="none">
+            <rect x="2" y="13" width="3.5" height="6" rx="1.75" fill="currentColor"/>
+            <rect x="8" y="9" width="3.5" height="14" rx="1.75" fill="currentColor"/>
+            <rect x="14" y="4" width="3.5" height="24" rx="1.75" fill="currentColor"/>
+            <rect x="20" y="9" width="3.5" height="14" rx="1.75" fill="currentColor"/>
+            <rect x="26" y="13" width="3.5" height="6" rx="1.75" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="brand__name">Dromo</span>
+      </div>
+      <p class="footer__tag">Run to the beat. Hit your pace.</p>
+      <p class="footer__legal">© <span id="year">2026</span> Dromo · dromo.fit</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
