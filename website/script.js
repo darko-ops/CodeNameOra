@@ -18,20 +18,13 @@
     }, 1400);
   }
 
-  // ---- Waitlist forms ----
-  //
-  // INTEGRATION POINT: where the email goes when someone joins the waitlist.
-  // Set ONE of these:
-  //   • WAITLIST_ENDPOINT — a POST URL (Formspree, Buttondown, your own API, etc.)
-  //     that accepts JSON { email }.
-  //   • Or wire it to Supabase: the app already uses project prftbirfbzhdacuenatw.
-  //     Create a `waitlist (email text, created_at timestamptz)` table with an
-  //     INSERT-only RLS policy for the anon role, then POST to
-  //     https://prftbirfbzhdacuenatw.supabase.co/rest/v1/waitlist with the anon key.
-  //
-  // Until one is set, submissions are validated and stored in localStorage so the
-  // UX is complete and nothing is silently lost before launch.
-  var WAITLIST_ENDPOINT = ""; // e.g. "https://formspree.io/f/xxxxxxx"
+  // ---- Waitlist storage: Supabase ----
+  // Sign-ups POST into the `waitlist` table of project prftbirfbzhdacuenatw. The
+  // publishable key is meant to be public — it grants INSERT only (insert-only RLS;
+  // the list can't be read back through it). Read sign-ups in the Supabase dashboard
+  // (Table editor -> waitlist).
+  var SUPABASE_URL = "https://prftbirfbzhdacuenatw.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_F17HeWBPWHvDkJtImrHxOg_W4ecrlvP";
 
   var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -84,24 +77,19 @@
   }
 
   function submit(email) {
-    if (WAITLIST_ENDPOINT) {
-      return fetch(WAITLIST_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ email: email }),
-      }).then(function (res) {
-        if (!res.ok) throw new Error("bad status " + res.status);
-      });
-    }
-    // Fallback: persist locally so early sign-ups aren't lost before a backend exists.
-    return new Promise(function (resolve) {
-      try {
-        var key = "dromo.waitlist";
-        var list = JSON.parse(localStorage.getItem(key) || "[]");
-        if (list.indexOf(email) === -1) list.push(email);
-        localStorage.setItem(key, JSON.stringify(list));
-      } catch (_) {}
-      setTimeout(resolve, 400);
+    return fetch(SUPABASE_URL + "/rest/v1/waitlist", {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ email: email, source: "landing" }),
+    }).then(function (res) {
+      if (res.ok) return;             // 201 — added
+      if (res.status === 409) return; // already on the list — treat as success
+      throw new Error("waitlist insert failed: " + res.status);
     });
   }
 

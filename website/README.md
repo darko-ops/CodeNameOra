@@ -30,13 +30,13 @@ Deployment → Root Directory). Otherwise Vercel serves the repo root and 404s.
 
 Vercel provisions the HTTPS cert automatically once DNS resolves.
 
-## Remaining TODO
+## Waitlist
 
-**Waitlist destination.** In `script.js`, `WAITLIST_ENDPOINT` is empty, so sign-ups are
-validated and stored in `localStorage` (nothing is lost, but nothing is sent). Set it
-to a POST endpoint that accepts `{ email }` — e.g. Formspree/Buttondown — or wire it to
-Supabase (project `prftbirfbzhdacuenatw`): create a `waitlist` table with an INSERT-only
-anon RLS policy and POST to its REST endpoint with the anon key.
+Sign-ups POST into the `waitlist` table of Supabase project `prftbirfbzhdacuenatw`
+(`script.js` → `submit()`). RLS is **insert-only** for the public: the publishable key
+embedded in the page can add a row but cannot read the list, so emails can't be scraped.
+Duplicate emails return 409 and are treated as success. **Read sign-ups in the Supabase
+dashboard → Table editor → `waitlist`** (or via a service key).
 
 (The `og:image` is in place — `og-image.png`, 1200×630.)
 
