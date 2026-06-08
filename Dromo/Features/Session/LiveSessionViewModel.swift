@@ -44,6 +44,11 @@ final class LiveSessionViewModel: ObservableObject {
     /// Ignore accidental opens — only persist runs of at least this length.
     private let minRunSeconds = 30
 
+    /// Natural-fatigue context: softens the engine's push when the runner is genuinely
+    /// tiring (vs lazy-slow), estimated from the live cadence stream.
+    private var fatigueEstimator = FatigueEstimator()
+    private var lastLoggedFatigue = 1.0
+
     /// Debug sink — shows in Xcode console and Console.app (subsystem com.daed.dromo,
     /// category "livesession"). Sendable so it can be handed to the LiveLoop actor.
     private static let logger = Logger(subsystem: "com.daed.dromo", category: "livesession")
@@ -237,12 +242,13 @@ final class LiveSessionViewModel: ObservableObject {
                 guard let self else { return }
                 let s = await loop.ingest(rawCadence: cadence, paceSecPerKm: pace)
                 self.state = s
-                // Hard pace-deviation alarm (±20 s/km). systemUptime is a monotonic
-                // clock — correct for the 30 s repeat interval regardless of wall time.
+                let now = ProcessInfo.processInfo.systemUptime   // monotonic clock
+
+                // Hard pace-deviation alarm (±20 s/km), repeating every 30 s while out.
                 if let alert = self.paceAlerts.evaluate(
                     currentPaceSecPerKm: s.currentPaceSecPerKm,
                     targetPaceSecPerKm: s.targetPaceSecPerKm,
-                    now: ProcessInfo.processInfo.systemUptime) {
+                    now: now) {
                     self.alertPlayer.play(alert)
                 }
                 // Standing state drives the HUD overlay (beep is the momentary trigger).
@@ -263,6 +269,18 @@ final class LiveSessionViewModel: ObservableObject {
                 self.recorder?.sample(paceSecPerKm: s.currentPaceSecPerKm,
                                       bpm: s.nowPlayingBPM ?? 0,
                                       trackID: s.nowPlayingTrackID, at: Date())
+
+                // Natural-fatigue context: estimate from the cadence stream and feed the
+                // coefficient to the loop, so the next selection softens its push when
+                // the runner is genuinely tiring rather than fighting them with fast music.
+                self.fatigueEstimator.ingest(now: now, cadence: s.currentCadence,
+                                             gap: s.targetCadence - s.currentCadence)
+                let fatigue = self.fatigueEstimator.coefficient(now: now)
+                await loop.updateFatigue(fatigue)
+                if abs(fatigue - self.lastLoggedFatigue) >= 0.1 {
+                    Self.log("fatigue coefficient \(String(format: "%.2f", fatigue))")
+                    self.lastLoggedFatigue = fatigue
+                }
             }
         }
         playback.onAdvance = { [weak self] in

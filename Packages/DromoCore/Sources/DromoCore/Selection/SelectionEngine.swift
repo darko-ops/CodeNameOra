@@ -49,13 +49,14 @@ public struct SelectionEngine {
         currentCadence: Double,
         candidates: [TrackFacts],
         preferences: [String: Double] = [:],
-        effectiveness: [String: Double] = [:]
+        effectiveness: [String: Double] = [:],
+        fatigue: Double = 1.0
     ) -> Decision? {
         guard !candidates.isEmpty else { return nil }
 
         let gap = targetCadence - currentCadence
         let nudge = applyHysteresis(gap: gap)
-        let desired = desiredBPM(targetCadence: targetCadence, gap: gap)
+        let desired = desiredBPM(targetCadence: targetCadence, gap: gap, fatigue: fatigue)
 
         // Rank ALL candidates on the blend — BPM shapes the score, it never gates a
         // track out (repeats are a soft penalty inside `score`, not an exclusion).
@@ -64,7 +65,8 @@ public struct SelectionEngine {
         for f in candidates {
             let s = score(f, desired: desired, target: targetCadence, gap: gap,
                           preference: preferences[f.id] ?? 0,
-                          effectiveness: effectiveness[f.id] ?? 0.5)
+                          effectiveness: effectiveness[f.id] ?? 0.5,
+                          fatigue: fatigue)
             scored.append(Scored(facts: f, score: s))
         }
         scored.sort { $0.score != $1.score ? $0.score > $1.score : $0.facts.id < $1.facts.id }
@@ -96,9 +98,11 @@ public struct SelectionEngine {
 
     // MARK: - Private
 
-    private func desiredBPM(targetCadence: Double, gap: Double) -> Double {
+    /// `fatigue` (1.0 fresh → ~0.2 fatigued) softens the push: a tiring runner gets a
+    /// gentler tempo target, not a harder one.
+    private func desiredBPM(targetCadence: Double, gap: Double, fatigue: Double) -> Double {
         let offset = max(-config.maxBPMOffset, min(config.maxBPMOffset, gap * config.bpmPushGain))
-        return targetCadence + offset   // behind (gap>0) ⇒ push tempo up; ahead ⇒ down
+        return targetCadence + offset * fatigue   // behind (gap>0) ⇒ push up, scaled by freshness
     }
 
     private func weights(_ mode: PaceMode) -> SelectionConfig.Weights {
@@ -110,12 +114,17 @@ public struct SelectionEngine {
     }
 
     /// "Good energy" depends on the moment: drive when pushing, calm when settling,
-    /// steady-moderate when holding.
-    private func energySubscore(_ energy: Double, _ mode: PaceMode) -> Double {
+    /// steady-moderate when holding. When pushing, `fatigue` bends the reward from
+    /// driving (spiky) energy toward sustained (moderate) energy as the runner tires —
+    /// so we don't throw aggressive tracks at someone fading.
+    private func energySubscore(_ energy: Double, _ mode: PaceMode, fatigue: Double) -> Double {
         switch mode {
-        case .push:   return energy                       // reward driving tracks
         case .settle: return 1 - energy                   // reward calm
         case .hold:   return 1 - abs(energy - 0.5) * 2    // reward moderate
+        case .push:
+            let driving = energy                          // fresh: reward high energy
+            let sustained = 1 - abs(energy - 0.5) * 2     // fatigued: reward steady/moderate
+            return sustained + (driving - sustained) * fatigue
         }
     }
 
@@ -138,13 +147,13 @@ public struct SelectionEngine {
     /// confidence multiplier (it's ground truth, not a metadata guess) and can flip the
     /// ranking once earned, which is the point: behavior teaches the engine.
     private func score(_ f: TrackFacts, desired: Double, target: Double, gap: Double,
-                       preference: Double, effectiveness: Double) -> Double {
+                       preference: Double, effectiveness: Double, fatigue: Double) -> Double {
         let mode = PaceMode(gap: gap, onPaceTolerance: config.onPaceTolerance)
         let w = weights(mode)
 
         let eff = effectiveBPM(f, targetCadence: target)
         let tempoFit = max(0, 1 - abs(eff - desired) / config.bpmTolerance)
-        let energy = energySubscore(f.energy ?? 0.5, mode)
+        let energy = energySubscore(f.energy ?? 0.5, mode, fatigue: fatigue)
         let beat = f.beatStrength ?? 0.5
 
         // Merit: the mode-weighted blend + learned taste, discounted if low-confidence.

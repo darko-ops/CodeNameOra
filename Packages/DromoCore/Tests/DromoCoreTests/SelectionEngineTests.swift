@@ -159,6 +159,42 @@ final class SelectionEngineTests: XCTestCase {
         XCTAssertEqual(second?.trackID, "great", "a dominant track survives the soft penalty")
     }
 
+    // MARK: Fatigue softens the push
+
+    /// Behind pace: a fresh runner gets pushed toward a higher-tempo track; a fatigued
+    /// runner gets a gentler pick closer to their current target — same candidates.
+    func testFatigueSoftensTempoPush() {
+        let pushed = facts("pushed", bpm: 182)   // matches the fresh pushed-up target
+        let gentle = facts("gentle", bpm: 172)   // closer to target, gentler
+
+        var fresh = SelectionEngine()
+        XCTAssertEqual(fresh.selectNext(targetCadence: 170, currentCadence: 150,
+                                        candidates: [pushed, gentle], fatigue: 1.0)?.trackID,
+                       "pushed")
+
+        var tired = SelectionEngine()
+        XCTAssertEqual(tired.selectNext(targetCadence: 170, currentCadence: 150,
+                                        candidates: [pushed, gentle], fatigue: 0.3)?.trackID,
+                       "gentle")
+    }
+
+    /// Behind pace at equal tempo fit: fresh prefers the spiky high-energy track;
+    /// fatigued prefers the sustained moderate-energy one.
+    func testFatigueBendsEnergyTowardSustained() {
+        let spiky = facts("spiky", bpm: 176, energy: 0.95)
+        let sustained = facts("sustained", bpm: 176, energy: 0.55)
+
+        var fresh = SelectionEngine()
+        XCTAssertEqual(fresh.selectNext(targetCadence: 170, currentCadence: 150,
+                                        candidates: [spiky, sustained], fatigue: 1.0)?.trackID,
+                       "spiky")
+
+        var tired = SelectionEngine()
+        XCTAssertEqual(tired.selectNext(targetCadence: 170, currentCadence: 150,
+                                        candidates: [spiky, sustained], fatigue: 0.2)?.trackID,
+                       "sustained")
+    }
+
     func testDeterministic() {
         var a = SelectionEngine(), b = SelectionEngine()
         let pool = [facts("x", bpm: 165), facts("y", bpm: 175), facts("z", bpm: 185)]

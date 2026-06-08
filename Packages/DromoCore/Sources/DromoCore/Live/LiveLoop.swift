@@ -54,6 +54,9 @@ public actor LiveLoop {
     /// Learned behavioral effectiveness, per mode: [mode: [trackID: 0…1]]. Selection
     /// uses the sub-map for the mode in effect at pick time.
     private var effectivenessByMode: [PaceMode: [String: Double]] = [:]
+    /// Natural-fatigue coefficient (1.0 fresh → ~0.2 fatigued). Softens the engine's
+    /// push so a tiring runner gets gentler nudges, not harder ones.
+    private var fatigue: Double = 1.0
     private let config: Config
     private let targetCadence: Double
 
@@ -138,6 +141,15 @@ public actor LiveLoop {
         effectivenessByMode = byMode
     }
 
+    /// Update the natural-fatigue coefficient mid-session (1.0 fresh → ~0.2 fatigued),
+    /// so the next selection softens its push when the runner is genuinely tiring.
+    public func updateFatigue(_ coefficient: Double) {
+        fatigue = coefficient
+    }
+
+    /// The current fatigue coefficient (for HUD / logging).
+    public var fatigueCoefficient: Double { fatigue }
+
     private func selectAndPlay() async {
         var skipped = 0
         // Keep trying down the ranked pool until something actually plays. (Don't cap
@@ -153,7 +165,8 @@ public actor LiveLoop {
                 currentCadence: state.currentCadence,
                 candidates: candidates,
                 preferences: preferences,
-                effectiveness: effectivenessByMode[mode] ?? [:]
+                effectiveness: effectivenessByMode[mode] ?? [:],
+                fatigue: fatigue
             ) else {
                 state.nowPlayingTrackID = nil
                 log?("⚠️ no playable track — gave up after skipping \(skipped) "
