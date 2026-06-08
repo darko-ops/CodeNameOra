@@ -21,6 +21,8 @@ final class LiveSessionViewModel: ObservableObject {
     private let tracks: [Track]
     private let provider: MusicProviderProtocol?
     private let targetPaceSecPerKm: Double
+    /// Optional distance goal (meters) — drives the finishing-line kick.
+    private let targetDistanceMeters: Double?
     private let targetCadence: Double
 
     private let source = PaceCadenceSource()
@@ -48,6 +50,7 @@ final class LiveSessionViewModel: ObservableObject {
     /// tiring (vs lazy-slow), estimated from the live cadence stream.
     private var fatigueEstimator = FatigueEstimator()
     private var lastLoggedFatigue = 1.0
+    private var inFinishingKick = false
 
     /// Debug sink — shows in Xcode console and Console.app (subsystem com.daed.dromo,
     /// category "livesession"). Sendable so it can be handed to the LiveLoop actor.
@@ -62,10 +65,12 @@ final class LiveSessionViewModel: ObservableObject {
     private let factsCache = GRDBTrackFactsCache()
     private var identityByLocalID: [String: IdentityKey] = [:]
 
-    init(tracks: [Track], targetPaceSecPerKm: Double, provider: MusicProviderProtocol? = nil) {
+    init(tracks: [Track], targetPaceSecPerKm: Double, targetDistanceMeters: Double? = nil,
+         provider: MusicProviderProtocol? = nil) {
         self.tracks = tracks
         self.provider = provider
         self.targetPaceSecPerKm = targetPaceSecPerKm
+        self.targetDistanceMeters = targetDistanceMeters
         targetCadence = CadenceModel().targetCadence(forPaceSecPerKm: targetPaceSecPerKm)
         labelsByID = Dictionary(tracks.map { ($0.id, "\($0.title) — \($0.artist)") },
                                 uniquingKeysWith: { a, _ in a })
@@ -275,7 +280,20 @@ final class LiveSessionViewModel: ObservableObject {
                 // the runner is genuinely tiring rather than fighting them with fast music.
                 self.fatigueEstimator.ingest(now: now, cadence: s.currentCadence,
                                              gap: s.targetCadence - s.currentCadence)
-                let fatigue = self.fatigueEstimator.coefficient(now: now)
+                var fatigue = self.fatigueEstimator.coefficient(now: now)
+
+                // Finishing-line kick: in the last 10% of a distance goal, override the
+                // fatigue softening and give a full push — the one moment aggressive
+                // music actually helps. (Needs GPS distance; indoor runs won't trigger.)
+                if let goal = self.targetDistanceMeters, goal > 0,
+                   let dist = self.recorder?.distanceMeters, dist >= goal * 0.9 {
+                    fatigue = 1.0
+                    if !self.inFinishingKick {
+                        self.inFinishingKick = true
+                        Self.log("finishing kick — final 10% of \(Int(goal)) m, full push")
+                    }
+                }
+
                 await loop.updateFatigue(fatigue)
                 if abs(fatigue - self.lastLoggedFatigue) >= 0.1 {
                     Self.log("fatigue coefficient \(String(format: "%.2f", fatigue))")

@@ -22,7 +22,8 @@ struct LiveRunRecorder {
 
     private var paces: [PaceLog] = []
     private var plays: [TrackPlay] = []
-    private var distanceMeters: Double = 0
+    /// Distance covered so far (integrated from pace). Read live for the finishing kick.
+    private(set) var distanceMeters: Double = 0
     private var lastSampleAt: Date?
     private var currentTrackID: String?
     private var currentPlayStart: Date?

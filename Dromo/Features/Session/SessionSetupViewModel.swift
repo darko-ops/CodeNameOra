@@ -27,6 +27,19 @@ final class SessionSetupViewModel: ObservableObject {
 
     @Published var sensitivity: UserSettings.BPMSensitivity = .standard
 
+    /// Optional distance goal for PACE mode (km; 0 = off). Goal-time mode already has a
+    /// distance, so it's used automatically there.
+    @Published var distanceGoalKm: Double = 0
+
+    /// The run's distance goal in meters (for the finishing-line kick: the last 10%
+    /// overrides fatigue softening and pushes), or nil when there's no goal.
+    var targetDistanceMeters: Double? {
+        switch mode {
+        case .goalTime: return distance.meters                       // the race distance IS the goal
+        case .pace:     return distanceGoalKm > 0 ? distanceGoalKm * 1_000 : nil
+        }
+    }
+
     /// Canonical target pace in seconds per kilometre.
     var targetPaceSecondsPerKm: Double {
         switch mode {

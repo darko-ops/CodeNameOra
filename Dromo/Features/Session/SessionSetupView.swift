@@ -20,6 +20,7 @@ struct SessionSetupView: View {
                     }
                     modePicker
                     targetCard
+                    if vm.mode == .pace { distanceGoalCard }
                     sensitivityCard
                 }
                 .padding(.horizontal, Spacing.screen)
@@ -32,6 +33,7 @@ struct SessionSetupView: View {
             LiveHUDView(vm: LiveSessionViewModel(
                 tracks: coordinator.library,
                 targetPaceSecPerKm: vm.targetPaceSecondsPerKm,
+                targetDistanceMeters: vm.targetDistanceMeters,
                 provider: coordinator.musicProvider))
         }
     }
@@ -152,6 +154,35 @@ struct SessionSetupView: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.oraTextMuted)
         }
+    }
+
+    // MARK: - Distance goal (pace mode)
+
+    private var distanceGoalCard: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("DISTANCE GOAL (OPTIONAL)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.oraTextMuted)
+            HStack {
+                Text(vm.distanceGoalKm > 0
+                     ? String(format: "%.1f km", vm.distanceGoalKm)
+                     : "Off")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(vm.distanceGoalKm > 0 ? .zoneSteady : .oraTextMuted)
+                    .monospacedDigit()
+                Spacer()
+                Stepper("", value: $vm.distanceGoalKm, in: 0...50, step: 0.5)
+                    .labelsHidden()
+            }
+            Text(vm.distanceGoalKm > 0
+                 ? "The final 10% gets a finishing-line push, even if you're tiring."
+                 : "Set a goal to get a finishing-line kick in the last stretch.")
+                .font(.system(size: 12))
+                .foregroundColor(.oraTextSecondary)
+        }
+        .padding(Spacing.md)
+        .background(Color.oraSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     // MARK: - Sensitivity
