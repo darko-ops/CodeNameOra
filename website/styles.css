@@ -402,9 +402,8 @@ html.no-intro .page { animation: none; }
   z-index: 50;
   background: var(--intro-sheet);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding-top: 26vh;
   animation: introFade 0.9s ease 2.9s forwards;
 }
 html.no-intro .intro { display: none; }
