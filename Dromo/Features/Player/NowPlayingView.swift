@@ -93,10 +93,17 @@ struct NowPlayingView: View {
 
     private var controls: some View {
         HStack(spacing: 28) {
-            Button { np.toggleShuffle() } label: {
-                Image(systemName: "shuffle")
+            Menu {
+                Picker("Queue order", selection: Binding(
+                    get: { np.queueOrder }, set: { np.setOrder($0) })) {
+                    ForEach(QueueOrder.allCases, id: \.self) { order in
+                        Label(order.label, systemImage: Self.icon(for: order)).tag(order)
+                    }
+                }
+            } label: {
+                Image(systemName: Self.icon(for: np.queueOrder))
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(np.isShuffle ? .zoneSteady : .oraTextMuted)
+                    .foregroundColor(np.queueOrder == .inOrder ? .oraTextMuted : .zoneSteady)
             }
             Button { np.previous() } label: {
                 Image(systemName: "backward.fill").font(.system(size: 26))
@@ -118,6 +125,16 @@ struct NowPlayingView: View {
         .padding(.top, Spacing.sm)
     }
 
+    private static func icon(for order: QueueOrder) -> String {
+        switch order {
+        case .inOrder:   return "list.number"
+        case .shuffle:   return "shuffle"
+        case .tempoFlow: return "waveform"
+        case .energyArc: return "chart.line.uptrend.xyaxis"
+        case .taste:     return "sparkles"
+        }
+    }
+
     // MARK: - Up Next (the rest of the queue)
 
     @ViewBuilder
@@ -125,7 +142,9 @@ struct NowPlayingView: View {
         let upcoming = Array(np.queue.enumerated()).filter { $0.offset > np.index }
         if !upcoming.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text("UP NEXT")
+                Text(np.queueOrder == .inOrder
+                     ? "UP NEXT"
+                     : "UP NEXT · \(np.queueOrder.label.uppercased())")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.oraTextMuted)
                     .frame(maxWidth: .infinity, alignment: .leading)

@@ -21,17 +21,26 @@ final class NowPlayingController: ObservableObject {
     @Published private(set) var artwork: UIImage?
 
     enum RepeatMode { case off, all, one }
-    @Published private(set) var isShuffle = false
+    /// How "up next" is ordered (replaces the old shuffle toggle). Persisted.
+    @Published private(set) var queueOrder: QueueOrder = .inOrder
     @Published private(set) var repeatMode: RepeatMode = .off
 
     var current: Track? { queue.indices.contains(index) ? queue[index] : nil }
 
     private let player = MPMusicPlayerController.applicationMusicPlayer
     private var timer: Timer?
-    /// The un-shuffled order, so shuffle can be turned back off.
+    /// The list as given to `play` (so order modes re-derive from the full set).
     private var originalOrder: [Track] = []
+    /// Cached learned taste (likes/skips), for taste-aware ordering. Refreshed in the
+    /// background so `play`/`setOrder` stay synchronous.
+    private var preferences: [String: Double] = [:]
+    private let preferenceStore = GRDBPreferenceStore()
+    private let orderKey = "dromo.nowplaying.queueOrder"
 
     init() {
+        if let raw = UserDefaults.standard.string(forKey: orderKey),
+           let saved = QueueOrder(rawValue: raw) { queueOrder = saved }
+        Task { preferences = await preferenceStore.weights() }
         player.beginGeneratingPlaybackNotifications()
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(itemChanged),
@@ -49,10 +58,20 @@ final class NowPlayingController: ObservableObject {
     func play(tracks: [Track], startAt startIndex: Int) {
         originalOrder = tracks
         let start = max(0, min(startIndex, tracks.count - 1))
-        let order = isShuffle ? shuffledOrder(tracks, firstIndex: start) : tracks
-        queue = order
-        index = isShuffle ? 0 : start
-        let items = mediaItems(for: order)
+        let seed = tracks.indices.contains(start) ? tracks[start] : nil
+
+        // In order = play from the tapped track in list order. Any other mode reorders
+        // the rest around the seed (pinned first).
+        if queueOrder == .inOrder {
+            queue = tracks
+            index = start
+        } else {
+            queue = QueueOrganizer.organize(tracks, order: queueOrder, seed: seed,
+                                            preferences: preferences,
+                                            shuffleSeed: UInt64.random(in: .min ... .max))
+            index = 0
+        }
+        let items = mediaItems(for: queue)
         guard !items.isEmpty else { return }   // mock/Spotify ids aren't library items
         try? AVAudioSession.sharedInstance().setActive(true)
         player.shuffleMode = .off                // we own the shuffle order
@@ -65,13 +84,7 @@ final class NowPlayingController: ObservableObject {
         isExpanded = true
         startTimer()
         updateNowPlayingInfo()
-    }
-
-    private func shuffledOrder(_ tracks: [Track], firstIndex: Int) -> [Track] {
-        guard tracks.indices.contains(firstIndex) else { return tracks.shuffled() }
-        let first = tracks[firstIndex]
-        let rest = tracks.enumerated().filter { $0.offset != firstIndex }.map(\.element).shuffled()
-        return [first] + rest
+        Task { preferences = await preferenceStore.weights() }   // refresh taste for next time
     }
 
     func togglePlayPause() {
@@ -86,20 +99,23 @@ final class NowPlayingController: ObservableObject {
         play(tracks: queue, startAt: queueIndex)
     }
 
-    func toggleShuffle() {
-        isShuffle.toggle()
-        guard let current else { return }   // nothing playing — state recorded for next play()
+    /// Change how "up next" is ordered, re-deriving from the full list with the current
+    /// track pinned first (playback continues uninterrupted). Persisted across launches.
+    func setOrder(_ order: QueueOrder) {
+        queueOrder = order
+        UserDefaults.standard.set(order.rawValue, forKey: orderKey)
+        guard let current else { return }   // nothing playing — applies on next play()
+        let position = player.currentPlaybackTime
 
-        let newOrder: [Track]
-        let newIndex: Int
-        if isShuffle {
-            newOrder = [current] + queue.filter { $0.id != current.id }.shuffled()
-            newIndex = 0
+        if order == .inOrder {
+            let idx = originalOrder.firstIndex { $0.id == current.id } ?? 0
+            requeue(originalOrder, startAt: idx, resumeAt: position)
         } else {
-            newOrder = originalOrder
-            newIndex = originalOrder.firstIndex { $0.id == current.id } ?? 0
+            let reordered = QueueOrganizer.organize(originalOrder, order: order, seed: current,
+                                                    preferences: preferences,
+                                                    shuffleSeed: UInt64.random(in: .min ... .max))
+            requeue(reordered, startAt: 0, resumeAt: position)
         }
-        requeue(newOrder, startAt: newIndex, resumeAt: player.currentPlaybackTime)
     }
 
     /// Re-set the playback queue (e.g. after toggling shuffle) and resume the current
