@@ -16,7 +16,16 @@ final class LiveSessionViewModel: ObservableObject {
     /// Standing pace-deviation state for the HUD overlay (nil = on pace / unknown).
     @Published private(set) var paceAlert: PaceAlertMonitor.PaceAlert?
 
+    /// Wall-clock elapsed for the HUD's TIME readout (frozen while paused).
+    @Published private(set) var elapsedSeconds: Double = 0
+    /// Pause state — freezes the loop, the clock, and playback (HUD Pause button).
+    @Published private(set) var isPaused = false
+
     let labelsByID: [String: String]
+    /// Title/artist/BPM for the now-playing card, keyed by track id.
+    let tracksByID: [String: Track]
+
+    private var clock: Timer?
 
     private let tracks: [Track]
     private let provider: MusicProviderProtocol?
@@ -74,6 +83,7 @@ final class LiveSessionViewModel: ObservableObject {
         targetCadence = CadenceModel().targetCadence(forPaceSecPerKm: targetPaceSecPerKm)
         labelsByID = Dictionary(tracks.map { ($0.id, "\($0.title) — \($0.artist)") },
                                 uniquingKeysWith: { a, _ in a })
+        tracksByID = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         feedback = FeedbackRouter(
             api: HTTPTrackTableClient(baseURL: LibrarySync.baseURL),
             preferences: GRDBPreferenceStore(),
@@ -119,6 +129,17 @@ final class LiveSessionViewModel: ObservableObject {
         await loop.updatePreferences(await feedback.preferenceWeights())
     }
 
+    /// Pause/resume the run: freezes the clock + loop ingestion and pauses playback.
+    func togglePause() {
+        isPaused.toggle()
+        if isPaused {
+            playback.pause()
+            paceAlert = nil          // don't leave an alarm hanging while stopped
+        } else {
+            playback.resume()
+        }
+    }
+
     func start() {
         Task { @MainActor in
             // 1) Instant pool from the user's real (playable) tracks. No catalog here:
@@ -153,6 +174,7 @@ final class LiveSessionViewModel: ObservableObject {
             // session benefits from the runner's demonstrated response.
             await loop.updateEffectiveness(effStore.allByMode())
             source.start()
+            startClock()
             self.state = await loop.start()
             await applyPreferenceWeights()   // carry over taste from past sessions
 
@@ -167,8 +189,21 @@ final class LiveSessionViewModel: ObservableObject {
         }
     }
 
+    /// 1 Hz clock for the HUD's TIME readout — ticks only while running (not paused).
+    private func startClock() {
+        clock?.invalidate()
+        clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isPaused else { return }
+                self.elapsedSeconds += 1
+            }
+        }
+    }
+
     func stop() {
         source.stop()
+        clock?.invalidate()
+        clock = nil
         paceAlert = nil
         // Close out the final track so its response is learned too.
         if let response = attributor.flush() {
@@ -245,6 +280,7 @@ final class LiveSessionViewModel: ObservableObject {
         source.onSample = { [weak self] cadence, pace in
             Task { @MainActor in
                 guard let self else { return }
+                guard !self.isPaused else { return }   // frozen while paused
                 let s = await loop.ingest(rawCadence: cadence, paceSecPerKm: pace)
                 self.state = s
                 let now = ProcessInfo.processInfo.systemUptime   // monotonic clock

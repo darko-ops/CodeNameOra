@@ -1,9 +1,11 @@
 import SwiftUI
 import DromoCore
 
-/// The minimal hands-free HUD (Phase 5): current vs target pace, the nudge state,
-/// and now-playing + its BPM. Updates live from `LoopState`; requires zero taps
-/// during a run. The same `LoopState` feeds the lock-screen Live Activity + Watch.
+/// The hands-free live HUD (design ref 6a on-pace / 6b too-slow). The whole screen
+/// tints to the coaching status so you read it at a glance: nudge badge, current vs
+/// target pace + time, cadence, the ramped target-BPM bar, now-playing + its BPM, and
+/// optional feedback. Updates live from `LoopState`; requires zero taps during a run.
+/// The same `LoopState` feeds the lock-screen Live Activity + Watch.
 struct LiveHUDView: View {
     @ObservedObject var vm: LiveSessionViewModel
     @Environment(\.dismiss) private var dismiss
@@ -11,15 +13,21 @@ struct LiveHUDView: View {
     var body: some View {
         ZStack {
             Color.oraBackground.ignoresSafeArea()
-            VStack(spacing: Spacing.xl) {
+            statusGlow
+
+            VStack(spacing: Spacing.lg) {
                 nudgeBadge
+                nudgeSubtitle
                 paceBlock
-                Spacer()
+                cadence
+                bpmBar
                 nowPlaying
+                Spacer(minLength: Spacing.md)
                 feedbackControls
+                controls
             }
             .padding(.horizontal, Spacing.screen)
-            .padding(.vertical, Spacing.xl)
+            .padding(.vertical, Spacing.lg)
         }
         .overlay { paceAlertOverlay }
         .animation(.easeInOut(duration: 0.4), value: vm.paceAlert)
@@ -34,7 +42,219 @@ struct LiveHUDView: View {
         .onDisappear { vm.stop() }
     }
 
-    // MARK: Pace-deviation overlay
+    // MARK: Whole-screen status tint (6a)
+
+    /// A soft radial glow near the top, tinted to the coaching status — the ambient
+    /// counterpart to the badge. The centered pace-alert overlay (6b) intensifies it.
+    private var statusGlow: some View {
+        RadialGradient(colors: [nudgeColor.opacity(0.14), .clear],
+                       center: UnitPoint(x: 0.5, y: 0.12),
+                       startRadius: 0, endRadius: 440)
+            .ignoresSafeArea()
+            .animation(.easeInOut(duration: 0.4), value: vm.state.nudge)
+    }
+
+    // MARK: Nudge
+
+    private var nudgeColor: Color {
+        switch vm.state.nudge {
+        case .speedUp: return .zonePeak
+        case .hold: return .zoneSteady
+        case .slowDown: return .zoneWarmUp
+        }
+    }
+
+    private var nudgeText: String {
+        switch vm.state.nudge {
+        case .speedUp: return "SPEED UP"
+        case .hold: return "ON PACE"
+        case .slowDown: return "EASE"
+        }
+    }
+
+    private var nudgeBadge: some View {
+        Text(nudgeText)
+            .font(.system(size: 34, weight: .bold, design: .rounded))
+            .foregroundColor(nudgeColor)
+            .padding(.vertical, Spacing.md)
+            .frame(maxWidth: .infinity)
+            .background(nudgeColor.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .animation(.easeInOut(duration: 0.3), value: vm.state.nudge)
+    }
+
+    /// Gap description under the badge ("You're right on target" / "15 s/km behind…").
+    private var nudgeSubtitle: some View {
+        let gap = Int(abs(vm.state.currentPaceSecPerKm - vm.state.targetPaceSecPerKm).rounded())
+        let text: String
+        switch vm.state.nudge {
+        case .hold:     text = "You're right on target — hold it here"
+        case .speedUp:  text = "\(gap) s/km behind — pick up the pace"
+        case .slowDown: text = "\(gap) s/km ahead — ease off"
+        }
+        return Text(text)
+            .font(.system(size: 13))
+            .foregroundColor(.oraTextSecondary)
+            .multilineTextAlignment(.center)
+    }
+
+    // MARK: Pace block — PACE / TARGET / TIME
+
+    private var paceBlock: some View {
+        HStack(spacing: 0) {
+            metric("PACE",
+                   PaceMath.paceString(secondsPerKm: vm.state.currentPaceSecPerKm, metric: true),
+                   nudgeColor)
+            divider
+            metric("TARGET",
+                   PaceMath.paceString(secondsPerKm: vm.state.targetPaceSecPerKm, metric: true),
+                   .oraTextPrimary)
+            divider
+            metric("TIME", PaceMath.clock(vm.elapsedSeconds), .oraTextPrimary)
+        }
+    }
+
+    private var divider: some View {
+        Rectangle().fill(Color.white.opacity(0.07)).frame(width: 1, height: 34)
+    }
+
+    private func metric(_ title: String, _ value: String, _ color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundColor(color)
+                .monospacedDigit()
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.oraTextMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Cadence
+
+    private var cadence: some View {
+        VStack(spacing: 2) {
+            Text("CADENCE")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.oraTextMuted)
+            (Text("\(Int(vm.state.currentCadence)) ")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+             + Text("spm")
+                .font(.system(size: 12)))
+                .foregroundColor(.oraTextPrimary)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Target-BPM bar
+
+    /// The ramped target BPM within the runner's working range. Rises as Dromo pushes
+    /// (behind pace → a faster track) and eases down when ahead.
+    private var bpmBar: some View {
+        let center = max(vm.state.targetCadence, 1)
+        let target = vm.state.nowPlayingBPM ?? center
+        return BPMBarView(targetBPM: target,
+                          range: (center - 20)...(center + 20),
+                          color: nudgeColor)
+    }
+
+    // MARK: Now playing
+
+    private var nowPlaying: some View {
+        let track = vm.state.nowPlayingTrackID.flatMap { vm.tracksByID[$0] }
+        return HStack(spacing: Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10).fill(Color.oraSurfaceElevated)
+                Image(systemName: "music.note").foregroundColor(.oraTextSecondary)
+            }
+            .frame(width: 52, height: 52)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track?.title ?? "Finding your tempo…")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.oraTextPrimary)
+                    .lineLimit(1)
+                Text(track?.artist ?? "—")
+                    .font(.system(size: 13))
+                    .foregroundColor(.oraTextSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if let bpm = vm.state.nowPlayingBPM {
+                VStack(spacing: 0) {
+                    Text("\(Int(bpm))")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(nudgeColor)
+                        .monospacedDigit()
+                    Text("BPM").font(.system(size: 9)).foregroundColor(.oraTextMuted)
+                }
+            }
+        }
+        .padding(Spacing.md)
+        .background(Color.oraSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .animation(.easeInOut(duration: 0.4), value: vm.state.nowPlayingTrackID)
+    }
+
+    // MARK: Feedback controls
+
+    /// Optional, secondary controls (the run is hands-free by default). Like/skip feed
+    /// the private taste layer and re-weight selection live; "off-beat" flags the
+    /// tempo to the Global Track Table.
+    private var feedbackControls: some View {
+        HStack(spacing: Spacing.xl) {
+            controlButton("hand.thumbsup.fill", "Like", .zoneSteady) { vm.like() }
+            controlButton("metronome", "Off-beat", .oraWarning) { vm.flagOffTempo() }
+            controlButton("forward.end.fill", "Skip", .oraTextSecondary) { vm.skip() }
+        }
+        .disabled(vm.state.nowPlayingTrackID == nil)
+        .opacity(vm.state.nowPlayingTrackID == nil ? 0.4 : 1)
+    }
+
+    private func controlButton(_ icon: String, _ label: String, _ tint: Color,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 22, weight: .semibold))
+                Text(label).font(.system(size: 10, weight: .medium))
+            }
+            .foregroundColor(tint)
+            .frame(maxWidth: .infinity)
+        }
+        .accessibilityLabel(label)
+    }
+
+    // MARK: Pause / End
+
+    private var controls: some View {
+        HStack(spacing: Spacing.md) {
+            Button { vm.togglePause() } label: {
+                Label(vm.isPaused ? "Resume" : "Pause",
+                      systemImage: vm.isPaused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.oraSurfaceElevated)
+                    .foregroundColor(.oraTextPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            Button { dismiss() } label: {
+                Text("End")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.oraDestructive.opacity(0.2))
+                    .foregroundColor(.oraDestructive)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    // MARK: Pace-deviation overlay (6b)
 
     /// A central radial glow + message that fades in while the runner is outside the
     /// ±20 s/km band — the visual companion to the beep. Distinct color per direction.
@@ -66,111 +286,5 @@ struct LiveHUDView: View {
             .allowsHitTesting(false)   // never blocks the End button / feedback controls
             .transition(.opacity)
         }
-    }
-
-    // MARK: Nudge
-
-    private var nudgeColor: Color {
-        switch vm.state.nudge {
-        case .speedUp: return .zonePeak
-        case .hold: return .zoneSteady
-        case .slowDown: return .zoneWarmUp
-        }
-    }
-
-    private var nudgeText: String {
-        switch vm.state.nudge {
-        case .speedUp: return "SPEED UP"
-        case .hold: return "ON PACE"
-        case .slowDown: return "EASE"
-        }
-    }
-
-    private var nudgeBadge: some View {
-        Text(nudgeText)
-            .font(.system(size: 34, weight: .bold))
-            .foregroundColor(nudgeColor)
-            .padding(.vertical, Spacing.md)
-            .frame(maxWidth: .infinity)
-            .background(nudgeColor.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .animation(.easeInOut(duration: 0.3), value: vm.state.nudge)
-    }
-
-    // MARK: Pace
-
-    private var paceBlock: some View {
-        HStack(spacing: Spacing.xl) {
-            paceStat("CURRENT", vm.state.currentPaceSecPerKm)
-            paceStat("TARGET", vm.state.targetPaceSecPerKm)
-        }
-    }
-
-    private func paceStat(_ label: String, _ secPerKm: Double) -> some View {
-        VStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.oraTextMuted)
-            Text(PaceMath.paceString(secondsPerKm: secPerKm, metric: true))
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .foregroundColor(.oraTextPrimary)
-                .monospacedDigit()
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: Now playing
-
-    private var nowPlaying: some View {
-        VStack(spacing: 6) {
-            if let id = vm.state.nowPlayingTrackID {
-                Text(vm.labelsByID[id] ?? id)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.oraTextPrimary)
-                    .lineLimit(1)
-                if let bpm = vm.state.nowPlayingBPM {
-                    Text("\(Int(bpm)) BPM")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(nudgeColor)
-                        .monospacedDigit()
-                }
-            } else {
-                Text("Finding your tempo…")
-                    .font(.system(size: 14))
-                    .foregroundColor(.oraTextMuted)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    // MARK: Feedback controls
-
-    /// Optional, secondary controls (the run is hands-free by default). Like/skip feed
-    /// the private taste layer and re-weight selection live; "off-beat" flags the
-    /// tempo to the Global Track Table.
-    private var feedbackControls: some View {
-        HStack(spacing: Spacing.xl) {
-            controlButton("hand.thumbsup.fill", "Like", .zoneSteady) { vm.like() }
-            controlButton("metronome", "Off-beat", .oraWarning) { vm.flagOffTempo() }
-            controlButton("forward.end.fill", "Skip", .oraTextSecondary) { vm.skip() }
-        }
-        .disabled(vm.state.nowPlayingTrackID == nil)
-        .opacity(vm.state.nowPlayingTrackID == nil ? 0.4 : 1)
-    }
-
-    private func controlButton(_ icon: String, _ label: String, _ tint: Color,
-                               action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 22, weight: .semibold))
-                Text(label).font(.system(size: 10, weight: .medium))
-            }
-            .foregroundColor(tint)
-            .frame(maxWidth: .infinity)
-        }
-        .accessibilityLabel(label)
     }
 }

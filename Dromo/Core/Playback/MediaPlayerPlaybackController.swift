@@ -53,6 +53,18 @@ final class MediaPlayerPlaybackController: NSObject, PlaybackControlling {
         }
     }
 
+    /// Pause the current track without tearing down the queue (Pause button on the HUD).
+    func pause() {
+        player.pause()
+        plog("⏸️ pause (state=\(player.playbackState.rawValue))")
+    }
+
+    /// Resume the paused track (Resume button on the HUD).
+    func resume() {
+        player.play()
+        plog("▶️ resume (state=\(player.playbackState.rawValue))")
+    }
+
     @objc private func nowPlayingItemChanged() {
         if player.nowPlayingItem == nil, let onAdvance {
             Task { await onAdvance() }
