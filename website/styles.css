@@ -429,11 +429,11 @@ html.no-intro .intro { display: none; }
   height: 5px;
   border-radius: 3px;
   background: var(--accent);
-  transform: translate(-50%, -50%) rotate(0);
+  transform: translate(-50%, -50%) rotate(-45deg);
   animation: introSpin 2.6s cubic-bezier(0.5, 0, 0.25, 1) 0.2s forwards;
 }
 
-@keyframes introSpin { from { transform: translate(-50%, -50%) rotate(0); } to { transform: translate(-50%, -50%) rotate(720deg); } }
+@keyframes introSpin { from { transform: translate(-50%, -50%) rotate(-45deg); } to { transform: translate(-50%, -50%) rotate(675deg); } }
 @keyframes introDR { to { transform: translateX(-820px); opacity: 0; } }
 @keyframes introMO { to { transform: translateX(820px); opacity: 0; } }
 @keyframes introDRm { to { transform: translateX(-320px); opacity: 0; } }
