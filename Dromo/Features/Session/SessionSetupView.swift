@@ -34,7 +34,8 @@ struct SessionSetupView: View {
                 tracks: coordinator.library,
                 targetPaceSecPerKm: vm.targetPaceSecondsPerKm,
                 targetDistanceMeters: vm.targetDistanceMeters,
-                provider: coordinator.musicProvider))
+                provider: coordinator.musicProvider,
+                aliases: coordinator.recordingAliases))
         }
     }
 

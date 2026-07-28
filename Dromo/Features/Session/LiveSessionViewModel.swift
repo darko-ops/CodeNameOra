@@ -78,7 +78,10 @@ final class LiveSessionViewModel: ObservableObject {
     /// Behavioral learning loop: attribute the runner's pace response to the playing
     /// track, learn per-(track, mode) effectiveness, and feed it back into selection.
     private var attributor = PaceResponseAttributor()
-    private let effStore = GRDBEffectivenessStore()
+    /// Learning is collective across duplicate copies of a recording: responses and
+    /// taste recorded through any app's copy attach to the recording itself.
+    private let aliases: RecordingAliases
+    private let effStore: CollectiveEffectivenessStore
 
     /// Persists this run (session + pace log + track plays) so it shows on the You-tab
     /// dashboard / Goals / Sessions list — the same path the old flow used.
@@ -107,9 +110,12 @@ final class LiveSessionViewModel: ObservableObject {
     private var identityByLocalID: [String: IdentityKey] = [:]
 
     init(tracks: [Track], targetPaceSecPerKm: Double, targetDistanceMeters: Double? = nil,
-         provider: MusicProviderProtocol? = nil) {
+         provider: MusicProviderProtocol? = nil, aliases: RecordingAliases = RecordingAliases()) {
         self.tracks = tracks
         self.provider = provider
+        self.aliases = aliases
+        self.effStore = CollectiveEffectivenessStore(base: GRDBEffectivenessStore(),
+                                                     aliases: aliases)
         self.targetPaceSecPerKm = targetPaceSecPerKm
         self.targetDistanceMeters = targetDistanceMeters
         targetCadence = CadenceModel().targetCadence(forPaceSecPerKm: targetPaceSecPerKm)
@@ -118,7 +124,8 @@ final class LiveSessionViewModel: ObservableObject {
         tracksByID = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         feedback = FeedbackRouter(
             api: HTTPTrackTableClient(baseURL: LibrarySync.baseURL),
-            preferences: GRDBPreferenceStore(),
+            preferences: CollectivePreferenceStore(base: GRDBPreferenceStore(),
+                                                   aliases: aliases),
             clientID: DeviceID.current)
         state = LoopState(currentCadence: 0, targetCadence: targetCadence,
                           currentPaceSecPerKm: targetPaceSecPerKm,
@@ -180,7 +187,9 @@ final class LiveSessionViewModel: ObservableObject {
             //    library with no usable tempo still has something to pace to.
             //    Untagged tracks pick up their BPM from the enrichment cache (GetSongBPM)
             //    so they're tempo-matchable once the background lookup has run.
-            let enriched = await EnrichedBPMStore().all()
+            // Expanded through the alias map so a BPM cached under the recording id
+            // (looked up via ANY app's copy) reaches whichever copy is in this pool.
+            let enriched = aliases.expanded(await EnrichedBPMStore().all())
             let providerEntries = tracks.map { track -> LibraryEntry in
                 let bpm = track.bpm > 0 ? track.bpm : (enriched[track.id] ?? 0)
                 return LibraryEntry(localID: track.id, identity: nil, providerBPM: bpm,

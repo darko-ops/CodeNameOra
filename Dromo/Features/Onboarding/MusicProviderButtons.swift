@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// The Apple Music / Spotify connect buttons — shared by the sign-in page (where a
-/// selection signs you in) and the You-tab music integrations page (where you can
-/// connect or switch services later). Both drive `AppCoordinator.connect`.
+/// The Apple Music / Spotify connect buttons — shared by the sign-in page and the
+/// You-tab music integrations page. Both drive `AppCoordinator.connect`, which ADDS
+/// a source to the unified library; an already-connected service's button becomes a
+/// library refresh instead of a switch.
 struct MusicProviderButtons: View {
     @EnvironmentObject private var coordinator: AppCoordinator
     @State private var connecting: AppCoordinator.ProviderChoice?
@@ -34,7 +35,7 @@ struct MusicProviderButtons: View {
                 } else {
                     Image(systemName: system)
                 }
-                Text(connecting == choice ? "Connecting…" : "Continue with \(choice.rawValue)")
+                Text(label(for: choice))
                     .font(.system(size: 17, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
@@ -44,6 +45,16 @@ struct MusicProviderButtons: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .disabled(connecting != nil)
+    }
+
+    private func isConnected(_ choice: AppCoordinator.ProviderChoice) -> Bool {
+        coordinator.sources.contains { $0.choice == choice }
+    }
+
+    private func label(for choice: AppCoordinator.ProviderChoice) -> String {
+        if connecting == choice { return "Connecting…" }
+        if isConnected(choice) { return "Refresh \(choice.rawValue) library" }
+        return "Continue with \(choice.rawValue)"
     }
 
     private func connect(_ choice: AppCoordinator.ProviderChoice) {

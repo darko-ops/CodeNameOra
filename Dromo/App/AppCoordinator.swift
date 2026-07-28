@@ -1,6 +1,20 @@
 import SwiftUI
 import DromoCore
 
+/// One connected music service: its live provider, the library it contributed, and
+/// whether the runner currently has it toggled into the unified library. Connections
+/// are retained even while toggled out — off means "leave my mix", not "disconnect".
+struct ConnectedMusicSource: Identifiable {
+    let choice: AppCoordinator.ProviderChoice
+    let provider: MusicProviderProtocol
+    var tracks: [Track]
+    /// Why tempo may be missing for this source (surfaced with the library, per source).
+    var note: String?
+    var isEnabled: Bool
+
+    var id: String { choice.rawValue }
+}
+
 /// Top-level navigation + shared state for the flow:
 /// Auth (create account / sign in) → Setup (main tabs, with a one-time "add your
 /// music" popup) → Active → Summary.
@@ -14,9 +28,16 @@ final class AppCoordinator: ObservableObject {
         case summary
     }
 
-    enum ProviderChoice: String {
+    enum ProviderChoice: String, CaseIterable {
         case appleMusic = "Apple Music"
         case spotify = "Spotify"
+
+        var trackProvider: Track.MusicProvider {
+            switch self {
+            case .appleMusic: return .appleMusic
+            case .spotify: return .spotify
+            }
+        }
     }
 
     /// Local mock auth (swappable for a real backend behind the same surface).
@@ -32,9 +53,18 @@ final class AppCoordinator: ObservableObject {
         screen = account.isSignedIn ? .setup : .auth
     }
 
-    /// Tracks fetched from the connected provider (or demo tracks as a fallback).
+    /// Every connected service. Connecting ADDS a source — it never replaces one —
+    /// and each source can be toggled in/out of the unified library independently.
+    @Published private(set) var sources: [ConnectedMusicSource] = []
+
+    /// The unified library: every enabled source folded into one, deduped by
+    /// recording (`LibraryAggregator`), with the demo catalog as the fallback when
+    /// connected sources yield nothing usable.
     @Published private(set) var library: [Track] = []
-    @Published private(set) var providerName = ""
+    /// Track id → recording id over EVERY connected source (enabled or not), so what
+    /// the app learns through one copy of a song applies to its duplicates in other
+    /// apps — and survives sources being toggled in and out.
+    @Published private(set) var recordingAliases = RecordingAliases()
     /// Set when tempo couldn't be sourced (Spotify restricted, or no BPM tags) —
     /// shown to the user so an empty/thin library is explained, not silent.
     @Published private(set) var bpmNote: String?
@@ -44,58 +74,134 @@ final class AppCoordinator: ObservableObject {
     /// Presents the run history (Library) as a sheet over the current screen.
     @Published var showingLibrary = false
 
-    private var provider: MusicProviderProtocol?
+    /// Routes per-track calls (play / ISRC / analyzable URL) to whichever connected
+    /// service owns the track. Nil until a source is connected and enabled.
+    private var router: MusicSourceRouter?
     private let repository = SessionRepository()
 
-    /// The connected provider — used by the live session to resolve per-track
-    /// identity (ISRC) and analyzable URLs against the Global Track Table.
-    var musicProvider: MusicProviderProtocol? { provider }
+    /// The provider face the live session talks to — one object regardless of how
+    /// many services are connected beneath it.
+    var musicProvider: MusicProviderProtocol? { router }
 
+    /// Connect a service (or refresh one that's already connected) and fold its
+    /// library into the unified pool. Other connected sources are untouched.
     func connect(_ choice: ProviderChoice) async -> Bool {
-        bpmNote = nil
-        providerName = choice.rawValue
-        let provider = makeProvider(for: choice)
-        self.provider = provider
+        let provider = sources.first(where: { $0.choice == choice })?.provider
+            ?? makeProvider(for: choice)
 
         guard await provider.requestAuthorization() else { return false }
 
-        var tracks = (try? await provider.fetchLibraryTracks()) ?? []
+        let tracks = (try? await provider.fetchLibraryTracks()) ?? []
 
-        // Surface why tempo may be missing for each provider.
+        // Surface why tempo may be missing, per provider.
+        var note: String?
         if let spotify = provider as? SpotifyProvider, await spotify.bpmUnavailable() {
-            bpmNote = "Spotify doesn't expose track tempo for new apps (its audio-features "
+            note = "Spotify doesn't expose track tempo for new apps (its audio-features "
                 + "endpoint is restricted)."
         } else if let apple = provider as? AppleMusicProvider {
             if apple.lastLibraryWasEmpty {
-                bpmNote = "No Apple Music library is available here (expected in the Simulator)."
+                note = "No Apple Music library is available here (expected in the Simulator)."
             } else if apple.lastLibraryHadNoBPM {
-                bpmNote = "None of your Apple Music tracks carry a BPM tag yet — on-device "
+                note = "None of your Apple Music tracks carry a BPM tag yet — on-device "
                     + "tempo analysis (a later build) will supply BPM for tracks you own."
             }
         }
 
-        // Keep the app usable when no analyzable, BPM-bearing tracks are available
-        // (Simulator, DRM-only streaming, or an untagged library) — fall back to the
-        // built-in catalog. This is the architecture's sanctioned fallback, not an error.
-        if tracks.isEmpty {
-            tracks = MockMusicCatalog.tracks
-            let prefix = bpmNote.map { $0 + " " } ?? ""
-            bpmNote = prefix + "Using Dromo's built-in demo catalog so you can try the "
-                + "full pace → BPM → music loop."
+        let source = ConnectedMusicSource(choice: choice, provider: provider,
+                                          tracks: tracks, note: note,
+                                          isEnabled: storedEnabled(choice))
+        if let index = sources.firstIndex(where: { $0.choice == choice }) {
+            sources[index] = source
+        } else {
+            sources.append(source)
         }
-
-        library = tracks
-        startEnrichment(for: tracks)
+        rebuildLibrary()
         // Note: connect() no longer drives navigation — sign-in owns entry to the
         // tabs. It's called from the post-sign-in popup and the You-tab integrations
         // page, both of which are already on `.setup`.
         return true
     }
 
+    /// Toggle a connected source in or out of the unified library. The connection
+    /// (auth, tokens) is retained either way; the choice persists across launches.
+    func setSource(_ choice: ProviderChoice, enabled: Bool) {
+        guard let index = sources.firstIndex(where: { $0.choice == choice }) else { return }
+        sources[index].isEnabled = enabled
+        storeEnabled(choice, enabled)
+        rebuildLibrary()
+    }
+
+    /// Fully remove a service: its tracks leave the pool and reconnecting re-auths.
+    ///
+    /// Also clears the remembered toggle. Otherwise a runner who switched a service
+    /// off and then removed it would reconnect later and find it connected but still
+    /// out of the mix, with nothing on screen explaining why.
+    func disconnect(_ choice: ProviderChoice) {
+        sources.removeAll { $0.choice == choice }
+        storeEnabled(choice, true)
+        rebuildLibrary()
+    }
+
+    /// Recompute the unified library, note, and router from the enabled sources.
+    private func rebuildLibrary() {
+        let enabled = sources.filter(\.isEnabled)
+        var merged = LibraryAggregator.merged(enabled.map(\.tracks))
+        var notes = enabled.compactMap(\.note)
+
+        // Keep the app usable when the enabled sources yield no BPM-bearing tracks
+        // (Simulator, DRM-only streaming, or an untagged library) — fall back to the
+        // built-in catalog. This is the architecture's sanctioned fallback, not an
+        // error. With no sources at all the library stays empty: the session pool's
+        // own catalog-first path covers the "run before connecting" promise.
+        if merged.isEmpty, !enabled.isEmpty {
+            merged = MockMusicCatalog.tracks
+            notes.append("Using Dromo's built-in demo catalog so you can try the "
+                + "full pace → BPM → music loop.")
+        }
+
+        library = merged
+        bpmNote = notes.isEmpty ? nil : notes.joined(separator: " ")
+        // Aliases span ALL sources, not just enabled ones: learning attached to a
+        // recording must survive the copy that taught it being toggled out.
+        recordingAliases = RecordingAliases(libraries: sources.map(\.tracks))
+        RecordingAliasesHolder.current = recordingAliases
+        router = enabled.isEmpty ? nil : MusicSourceRouter(sources: enabled.map {
+            (kind: $0.choice.trackProvider, provider: $0.provider, tracks: $0.tracks)
+        })
+
+        // Restarting enrichment cancels whatever lookup is in flight, so don't do it
+        // for a rebuild that didn't change the library — toggling a source whose songs
+        // are all duplicates of another's, say. The ledger makes a restart cheap rather
+        // than wasteful (attempted tracks are already recorded and get skipped), but an
+        // in-flight request dropped for nothing is still worth avoiding.
+        let ids = Set(merged.map(\.id))
+        guard ids != enrichedLibraryIDs else { return }
+        enrichedLibraryIDs = ids
+        startEnrichment(for: merged)
+    }
+
+    /// The library the current enrichment pass was started for.
+    private var enrichedLibraryIDs: Set<String> = []
+
+    // MARK: - Source toggle persistence
+
+    private static let disabledSourcesKey = "music.sources.disabled"
+
+    private func storedEnabled(_ choice: ProviderChoice) -> Bool {
+        let disabled = UserDefaults.standard.stringArray(forKey: Self.disabledSourcesKey) ?? []
+        return !disabled.contains(choice.rawValue)
+    }
+
+    private func storeEnabled(_ choice: ProviderChoice, _ enabled: Bool) {
+        var disabled = Set(UserDefaults.standard.stringArray(forKey: Self.disabledSourcesKey) ?? [])
+        if enabled { disabled.remove(choice.rawValue) } else { disabled.insert(choice.rawValue) }
+        UserDefaults.standard.set(Array(disabled).sorted(), forKey: Self.disabledSourcesKey)
+    }
+
     // MARK: - Auth (local mock)
 
     /// Create an account or sign in, then advance to the tabs. On first sign-in with
-    /// no connected provider, surface the "Add your music" popup.
+    /// no connected source, surface the "Add your music" popup.
     func authenticate(create: Bool, email: String, password: String) -> Result<Void, Error> {
         do {
             if create {
@@ -104,7 +210,7 @@ final class AppCoordinator: ObservableObject {
                 try account.signIn(email: email, password: password)
             }
             withAnimation { screen = .setup }
-            if provider == nil { showingMusicSetup = true }
+            if sources.isEmpty { showingMusicSetup = true }
             return .success(())
         } catch {
             return .failure(error)
@@ -114,9 +220,12 @@ final class AppCoordinator: ObservableObject {
     /// Sign out and reset music/session state, returning to the auth screen.
     func signOut() {
         account.signOut()
-        provider = nil
+        sources = []
+        router = nil
         library = []
-        providerName = ""
+        enrichedLibraryIDs = []
+        recordingAliases = RecordingAliases()
+        RecordingAliasesHolder.current = recordingAliases
         bpmNote = nil
         session = nil
         showingMusicSetup = false
@@ -143,8 +252,9 @@ final class AppCoordinator: ObservableObject {
     /// disappear (see memory: spotify-bpm-restriction).
     private func startEnrichment(for tracks: [Track]) {
         // Captured before the closure so identity resolution doesn't hop the main actor
-        // for every track it checks.
-        let provider = self.provider
+        // for every track it checks. The router sends each track's ISRC lookup to the
+        // service that owns it, so a mixed library enriches correctly.
+        let provider: MusicProviderProtocol? = self.router
         var sources: [BPMSourcing] = [
             // 1. Someone already measured this recording — one cheap request, best value.
             //    `Track` carries no ISRC, so identity is resolved lazily inside the
@@ -170,18 +280,23 @@ final class AppCoordinator: ObservableObject {
 
         enrichmentTask?.cancel()
         let store = EnrichedBPMStore()
+        // Hits are cached once per RECORDING: a BPM looked up through one app's copy
+        // serves its duplicates in every other app, with no second request.
+        let aliases = recordingAliases
         let pass = LibraryEnrichmentPass(
             chain: BPMSourceChain(sources),
-            sink: store,
+            sink: CollectiveBPMSink(base: store, aliases: aliases),
             ledger: GRDBEnrichmentLedger(),
             gate: EnrichmentGate.shared.isOpen)
 
         enrichmentTask = Task { [weak self] in
             let cached = await store.all()
             // Only tracks with nothing usable yet. The ledger decides which of those
-            // are due — this filter is just "don't ask about what we already know".
+            // are due — this filter is just "don't ask about what we already know",
+            // under the track's own id (legacy cache) or its recording's.
             let items = tracks
-                .filter { $0.bpm <= 0 && cached[$0.id] == nil }
+                .filter { $0.bpm <= 0 && cached[$0.id] == nil
+                    && cached[aliases.recordingID(for: $0.id)] == nil }
                 .map { EnrichmentItem(trackID: $0.id, title: $0.title, artist: $0.artist,
                                       providerBPM: $0.bpm) }
             guard !items.isEmpty else { return }
@@ -198,12 +313,12 @@ final class AppCoordinator: ObservableObject {
     }
 
     func startSession(targetPaceSecondsPerKm: Double, settings: UserSettings) {
-        let provider = self.provider
+        let router = self.router
         let controller = SessionController(
             targetPaceSecondsPerKm: targetPaceSecondsPerKm,
             settings: settings,
             tracks: library,
-            playback: { track in try? await provider?.play(track: track) }
+            playback: { track in try? await router?.play(track: track) }
         )
         session = controller
         withAnimation { screen = .session }
