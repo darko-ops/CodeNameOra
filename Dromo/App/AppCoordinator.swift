@@ -131,9 +131,14 @@ final class AppCoordinator: ObservableObject {
         rebuildLibrary()
     }
 
-    /// Fully remove a service (its tracks leave the pool; reconnecting re-auths).
+    /// Fully remove a service: its tracks leave the pool and reconnecting re-auths.
+    ///
+    /// Also clears the remembered toggle. Otherwise a runner who switched a service
+    /// off and then removed it would reconnect later and find it connected but still
+    /// out of the mix, with nothing on screen explaining why.
     func disconnect(_ choice: ProviderChoice) {
         sources.removeAll { $0.choice == choice }
+        storeEnabled(choice, true)
         rebuildLibrary()
     }
 
@@ -163,8 +168,20 @@ final class AppCoordinator: ObservableObject {
         router = enabled.isEmpty ? nil : MusicSourceRouter(sources: enabled.map {
             (kind: $0.choice.trackProvider, provider: $0.provider, tracks: $0.tracks)
         })
+
+        // Restarting enrichment cancels whatever lookup is in flight, so don't do it
+        // for a rebuild that didn't change the library — toggling a source whose songs
+        // are all duplicates of another's, say. The ledger makes a restart cheap rather
+        // than wasteful (attempted tracks are already recorded and get skipped), but an
+        // in-flight request dropped for nothing is still worth avoiding.
+        let ids = Set(merged.map(\.id))
+        guard ids != enrichedLibraryIDs else { return }
+        enrichedLibraryIDs = ids
         startEnrichment(for: merged)
     }
+
+    /// The library the current enrichment pass was started for.
+    private var enrichedLibraryIDs: Set<String> = []
 
     // MARK: - Source toggle persistence
 
@@ -206,6 +223,7 @@ final class AppCoordinator: ObservableObject {
         sources = []
         router = nil
         library = []
+        enrichedLibraryIDs = []
         recordingAliases = RecordingAliases()
         RecordingAliasesHolder.current = recordingAliases
         bpmNote = nil

@@ -4,6 +4,8 @@ import SwiftUI
 /// Music and Spotify after sign-in — the same buttons, surfaced as an integration.
 struct MusicIntegrationsView: View {
     @EnvironmentObject private var coordinator: AppCoordinator
+    /// The service a removal is being confirmed for (nil = no prompt showing).
+    @State private var removing: AppCoordinator.ProviderChoice?
 
     var body: some View {
         ScrollView {
@@ -58,6 +60,19 @@ struct MusicIntegrationsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.oraSurface, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .confirmationDialog("Remove \(removing?.rawValue ?? "")?",
+                            isPresented: Binding(get: { removing != nil },
+                                                 set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                if let removing { coordinator.disconnect(removing) }
+                removing = nil
+            }
+            Button("Cancel", role: .cancel) { removing = nil }
+        } message: {
+            Text("Its music leaves your mix and you'll sign in again to add it back. "
+                 + "What Dromo learned about those songs is kept.")
+        }
     }
 
     /// Every connected service with a toggle: off means "leave my mix for now", not
@@ -88,6 +103,17 @@ struct MusicIntegrationsView: View {
                         set: { coordinator.setSource(source.choice, enabled: $0) }))
                         .labelsHidden()
                         .tint(.zoneSteady)
+
+                    // Removing is quieter than the toggle on purpose: the toggle is the
+                    // everyday control, and this one costs a re-authorization to undo.
+                    // Visible rather than a swipe — this isn't a List, so a swipe
+                    // action would render nothing and the only way out would be hidden.
+                    Button { removing = source.choice } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13))
+                            .foregroundColor(.oraTextMuted)
+                    }
+                    .accessibilityLabel("Remove \(source.choice.rawValue)")
                 }
             }
 
