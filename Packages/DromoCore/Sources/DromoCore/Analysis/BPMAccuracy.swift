@@ -38,7 +38,11 @@ public struct AccuracyBar: Sendable {
     public init() {}
 }
 
-public enum AccuracyVerdict: String, Sendable {
+/// The measured verdict on on-device analysis. `pending` is not something the
+/// harness ever returns — it's the state of the PROJECT before a real ground-truth
+/// run has happened, which is what `ContributionPolicy` gates publishing on.
+public enum AccuracyVerdict: String, Sendable, Codable, Equatable {
+    case pending = "PENDING"
     case green = "GREEN", yellow = "YELLOW", red = "RED"
 }
 

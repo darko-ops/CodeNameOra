@@ -181,6 +181,8 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func start() {
+        // Analysis must never compete with a run for CPU or battery (Phase 4 gate).
+        TrackContributor.isSessionActive = true
         Task { @MainActor in
             // 1) Instant pool: the user's real (playable) tracks PLUS whatever of
             //    Dromo's catalog is actually stocked with audio in this build, so a
@@ -248,6 +250,7 @@ final class LiveSessionViewModel: ObservableObject {
     }
 
     func stop() {
+        TrackContributor.isSessionActive = false
         source.stop()
         clock?.invalidate()
         clock = nil

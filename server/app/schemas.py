@@ -47,6 +47,10 @@ class TrackFactsIn(IdentityKey):
 
     # Bookkeeping
     analysis_version: str = Field(max_length=32)
+    #: Which device analyzed this. Optional for backward compatibility, but without
+    #: it a submission can't take part in consensus — one anonymous device is
+    #: indistinguishable from a thousand.
+    client_id: str | None = Field(default=None, max_length=64)
 
 
 class TrackFactsOut(BaseModel):

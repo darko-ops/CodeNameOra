@@ -11,7 +11,7 @@ from __future__ import annotations
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import TrackConfirmation, TrackFacts
+from .models import TrackConfirmation, TrackFacts, TrackSubmission
 from .schemas import ConfirmIn, TrackFactsIn
 
 # --- Anti-poisoning constants (Phase 6 A1 / §8) ---
@@ -21,6 +21,12 @@ MIN_CORROBORATION = 3
 CONFIDENCE_OVERRIDE_THRESHOLD = 0.5
 # Corrected BPM observations must cluster this tightly (BPM) to count as agreement.
 CORRECTION_TOLERANCE = 4.0
+
+# --- Phase 4 consensus over device analyses ---
+# Two analyses of the same recording this close are the same reading.
+SUBMISSION_TOLERANCE = 2.0
+# Distinct devices that must agree before consensus overrides the stored facts.
+MIN_CONSENSUS_CLIENTS = 2
 
 
 async def get_by_identity(
@@ -63,6 +69,10 @@ async def populate(session: AsyncSession, data: TrackFactsIn) -> tuple[TrackFact
         if changed:
             await session.commit()
             await session.refresh(existing)
+        # A second device analyzing a recording we already hold is the whole point of
+        # the contributor path: it either corroborates the stored value or disputes it.
+        await record_submission(session, existing, data)
+        await session.refresh(existing)
         return existing, False
 
     row = TrackFacts(
@@ -81,7 +91,108 @@ async def populate(session: AsyncSession, data: TrackFactsIn) -> tuple[TrackFact
     session.add(row)
     await session.commit()
     await session.refresh(row)
+    # Record the first analysis as a submission too, so the second one has something
+    # to agree or disagree with.
+    await record_submission(session, row, data)
+    await session.refresh(row)
     return row, True
+
+
+def consensus(submissions: list[tuple[str, float, float]]) -> tuple[float, float, set[str]]:
+    """Confidence-weighted agreement over device analyses.
+
+    `submissions` is (client_id, bpm, confidence). Readings within SUBMISSION_TOLERANCE
+    form a cluster; the cluster carrying the most confidence wins, and everything
+    outside it is an outlier. Weighting by confidence rather than counting heads means
+    three uncertain guesses can't outvote two firm measurements — and clustering means
+    a half-tempo reading is rejected as disagreement rather than averaged into a tempo
+    nobody measured, which is what a plain mean would do.
+
+    Returns (bpm, confidence, outlier_client_ids).
+    """
+    if not submissions:
+        return (0.0, 0.0, set())
+
+    best: tuple[float, list[tuple[str, float, float]]] = (-1.0, [])
+    for _, anchor_bpm, _ in submissions:
+        cluster = [s for s in submissions if abs(s[1] - anchor_bpm) <= SUBMISSION_TOLERANCE]
+        weight = sum(conf for _, _, conf in cluster)
+        if weight > best[0]:
+            best = (weight, cluster)
+
+    _, cluster = best
+    total_weight = sum(conf for _, _, conf in cluster) or 1.0
+    bpm = sum(b * c for _, b, c in cluster) / total_weight
+    clients = {client for client, _, _ in cluster}
+
+    # Agreement between independent devices IS evidence, so confidence rises with it —
+    # but never to certainty, and never above what a lone reading could claim by much.
+    peak = max(conf for _, _, conf in cluster)
+    confidence = min(0.99, peak + 0.05 * (len(clients) - 1))
+
+    outliers = {client for client, _, _ in submissions} - clients
+    return (round(bpm, 3), round(confidence, 4), outliers)
+
+
+async def record_submission(
+    session: AsyncSession, track: TrackFacts, data: TrackFactsIn
+) -> None:
+    """Store one device's analysis and re-derive the canonical facts from ALL of them.
+
+    Deliberately not first-write-wins: that rule protects the table from churn when
+    every device agrees, but it also freezes a wrong first reading forever. Consensus
+    only moves the stored value when independent devices agree on something else.
+    """
+    if not data.client_id:
+        return
+
+    existing = await session.scalar(
+        select(TrackSubmission).where(
+            TrackSubmission.track_id == track.id,
+            TrackSubmission.client_id == data.client_id,
+            TrackSubmission.analysis_version == data.analysis_version,
+        )
+    )
+    if existing is None:
+        session.add(
+            TrackSubmission(
+                track_id=track.id,
+                client_id=data.client_id,
+                bpm=data.bpm,
+                bpm_confidence=data.bpm_confidence,
+                analysis_version=data.analysis_version,
+            )
+        )
+        await session.flush()
+
+    rows = (
+        await session.execute(
+            select(
+                TrackSubmission.client_id,
+                TrackSubmission.bpm,
+                TrackSubmission.bpm_confidence,
+                TrackSubmission.id,
+            ).where(TrackSubmission.track_id == track.id)
+        )
+    ).all()
+    if not rows:
+        return
+
+    bpm, confidence, outliers = consensus([(r[0], r[1], r[2]) for r in rows])
+
+    # Flag disagreement rather than deleting it: an outlier at two devices can become
+    # the majority at five.
+    for client_id, _, _, submission_id in rows:
+        submission = await session.get(TrackSubmission, submission_id)
+        if submission is not None:
+            submission.is_outlier = client_id in outliers
+
+    agreeing = len({r[0] for r in rows} - outliers)
+    if agreeing >= MIN_CONSENSUS_CLIENTS and abs(bpm - track.bpm) > SUBMISSION_TOLERANCE:
+        track.bpm = bpm          # independent devices agree the stored value is wrong
+    if agreeing >= MIN_CONSENSUS_CLIENTS:
+        track.bpm_confidence = max(track.bpm_confidence, confidence)
+    await session.commit()
 
 
 async def confirm(session: AsyncSession, track_id: str, data: ConfirmIn) -> TrackFacts | None:
