@@ -41,18 +41,21 @@ public actor SessionPoolResolver {
         self.catalog = catalog
     }
 
-    /// Instant pool: provider-known BPM + catalog backfill. Playback can start now.
+    /// Instant pool: provider-known BPM + catalog. Playback can start now.
     /// Static — needs no network/coordinator, so the UI can call it before resolution.
     public static func initialPool(entries: [LibraryEntry], targetCadence: Double,
-                                   catalog: [TrackFacts] = FallbackCatalog.tracks) -> [TrackFacts] {
+                                   catalog: [TrackFacts] = FallbackCatalog.tracks,
+                                   policy: CatalogBackfill.Policy = .union) -> SessionPool {
         let seed = entries.compactMap { providerFacts($0) }
-        return CatalogBackfill.augment(userPool: seed, targetCadence: targetCadence, catalog: catalog)
+        return CatalogBackfill.merge(userPool: seed, targetCadence: targetCadence,
+                                     catalog: catalog, policy: policy)
     }
 
     /// Resolve via the Global Track Table (lookup-first; misses analyzed in the
     /// background, populating the table + cache), then build the upgraded pool with
     /// resolved facts mapped back to local playback ids.
-    public func resolvedPool(entries: [LibraryEntry], targetCadence: Double) async -> [TrackFacts] {
+    public func resolvedPool(entries: [LibraryEntry], targetCadence: Double,
+                             policy: CatalogBackfill.Policy = .union) async -> SessionPool {
         let items = entries.compactMap { entry -> SyncItem? in
             guard let identity = entry.identity, identity.isValid else { return nil }
             return SyncItem(localID: entry.localID, key: identity)
@@ -67,7 +70,8 @@ public actor SessionPoolResolver {
                 pool.append(provider)                                  // §9 fallback
             }
         }
-        return CatalogBackfill.augment(userPool: pool, targetCadence: targetCadence, catalog: catalog)
+        return CatalogBackfill.merge(userPool: pool, targetCadence: targetCadence,
+                                     catalog: catalog, policy: policy)
     }
 
     // MARK: - Private

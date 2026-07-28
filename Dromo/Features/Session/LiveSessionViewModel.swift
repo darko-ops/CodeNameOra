@@ -18,6 +18,27 @@ final class LiveSessionViewModel: ObservableObject {
 
     /// Wall-clock elapsed for the HUD's TIME readout (frozen while paused).
     @Published private(set) var elapsedSeconds: Double = 0
+
+    /// How much of the runner's OWN library this session can pace to — drives the
+    /// "from your library" story as enrichment fills coverage in over time.
+    @Published private(set) var coverage = LibraryCoverage(total: 0, tagged: 0)
+
+    /// Origin per track id, so the HUD can badge what came from the runner's library.
+    private var origins: [String: TrackOrigin] = [:]
+
+    /// Finalized responses from THIS run — the evidence behind the post-run
+    /// "What moved you". Same objects the learner consumed, so the summary and the
+    /// learner can never tell different stories about the same run.
+    @Published private(set) var runResponses: [TrackResponse] = []
+
+    /// Why the engine chose what's playing, for the HUD's "why this track?".
+    @Published private(set) var nowPlayingReason: SelectionEngine.Reason?
+
+    /// Where the now-playing track came from (defaults to the runner's own music).
+    var nowPlayingOrigin: TrackOrigin {
+        guard let id = state.nowPlayingTrackID else { return .library }
+        return origins[id] ?? .library
+    }
     /// Pause state — freezes the loop, the clock, and playback (HUD Pause button).
     @Published private(set) var isPaused = false
 
@@ -35,13 +56,24 @@ final class LiveSessionViewModel: ObservableObject {
     private let targetCadence: Double
 
     private let source = PaceCadenceSource()
-    private let playback = MediaPlayerPlaybackController()
+    /// Routes catalog ids to bundled audio and library ids to the system player, so
+    /// the loop sees one playback surface whether or not the catalog is stocked.
+    private let playback = CatalogPlaybackController()
     private var loop: LiveLoop?
 
     /// Hard ±20 s/km pace alarm: beeps (slow vs fast) over ducked music, repeating
     /// every 30 s while out of range. Separate from the engine's gentle music nudge.
     private var paceAlerts = PaceAlertMonitor()
     private let alertPlayer = PaceAlertPlayer()
+
+    /// Optional coach layer (Phase 7): splits, goal-pace checks and negative-split
+    /// guidance, spoken over ducked music. Off unless the runner turned it on — the
+    /// DJ is the product and works with nothing enabled here.
+    private var coach = CoachCueEngine(isEnabled: CoachVoice.isEnabled)
+    private let coachVoice = CoachVoice()
+    /// The track id the loop was playing at the previous sample — a change means a
+    /// transition is in flight, and the coach must not speak across it.
+    private var lastCoachTrackID: String?
 
     /// Behavioral learning loop: attribute the runner's pace response to the playing
     /// track, learn per-(track, mode) effectiveness, and feed it back into selection.
@@ -134,6 +166,7 @@ final class LiveSessionViewModel: ObservableObject {
         isPaused.toggle()
         if isPaused {
             playback.pause()
+            coachVoice.stop()        // no coaching into a paused run
             paceAlert = nil          // don't leave an alarm hanging while stopped
         } else {
             playback.resume()
@@ -142,8 +175,9 @@ final class LiveSessionViewModel: ObservableObject {
 
     func start() {
         Task { @MainActor in
-            // 1) Instant pool from the user's real (playable) tracks. No catalog here:
-            //    catalog tracks have no playable audio, so they'd just be dead weight.
+            // 1) Instant pool: the user's real (playable) tracks PLUS whatever of
+            //    Dromo's catalog is actually stocked with audio in this build, so a
+            //    library with no usable tempo still has something to pace to.
             //    Untagged tracks pick up their BPM from the enrichment cache (GetSongBPM)
             //    so they're tempo-matchable once the background lookup has run.
             let enriched = await EnrichedBPMStore().all()
@@ -157,14 +191,16 @@ final class LiveSessionViewModel: ObservableObject {
             Self.log("enrichment cache: \(enriched.count) BPMs; \(known)/\(providerEntries.count) pool tracks have BPM")
             let initial = SessionPoolResolver.initialPool(entries: providerEntries,
                                                           targetCadence: targetCadence,
-                                                          catalog: [])
-            let playable = initial.filter { UInt64($0.id) != nil }.count
+                                                          catalog: CatalogLibrary.shared.stockedTracks)
+            coverage = LibraryCoverage.measure(pool: initial)
+            origins = initial.origins
             Self.log("""
                 start: \(providerEntries.count) library tracks → initial pool \(initial.count) \
-                (\(playable) playable, \(initial.count - playable) catalog) · \
-                target \(Int(targetPaceSecPerKm))s/km
+                (\(initial.libraryTracks.count) yours, \(initial.catalogTracks.count) catalog, \
+                \(coverage.tagged) tempo-matched) · target \(Int(targetPaceSecPerKm))s/km
                 """)
-            let loop = LiveLoop(playback: playback, candidates: initial,
+            let loop = LiveLoop(playback: playback, candidates: initial.facts,
+                                origins: initial.origins,
                                 targetPaceSecPerKm: targetPaceSecPerKm, log: Self.log)
             self.loop = loop
             wire(loop)
@@ -185,6 +221,8 @@ final class LiveSessionViewModel: ObservableObject {
             let withISRC = entries.filter { $0.identity != nil }.count
             Self.log("identity: \(withISRC)/\(entries.count) have ISRC, \(urlByID.count) analyzable URLs")
             let upgraded = await resolvePool(entries: entries, urlByID: urlByID)
+            coverage = LibraryCoverage.measure(pool: upgraded)
+            origins = upgraded.origins
             await loop.updateCandidates(upgraded)
         }
     }
@@ -205,9 +243,21 @@ final class LiveSessionViewModel: ObservableObject {
         clock?.invalidate()
         clock = nil
         paceAlert = nil
+        // Close out with the run's summary line, then fall silent — a coach that keeps
+        // talking to someone who has stopped is just noise.
+        if let cue = coach.flush(CoachCueEngine.Sample(
+            distanceMeters: recorder?.distanceMeters ?? 0,
+            elapsedSeconds: elapsedSeconds,
+            paceSecPerKm: state.currentPaceSecPerKm,
+            targetPaceSecPerKm: state.targetPaceSecPerKm)) {
+            coachVoice.speak(cue)
+        } else {
+            coachVoice.stop()
+        }
         // Close out the final track so its response is learned too.
         if let response = attributor.flush() {
-            Task { await effStore.record(response) }
+            runResponses.append(response)
+            Task { [effStore] in await effStore.record(response) }
         }
         // Persist the run (unless it was an accidental, too-short open).
         if var recorder {
@@ -259,7 +309,7 @@ final class LiveSessionViewModel: ObservableObject {
         return (enriched, urls)
     }
 
-    private func resolvePool(entries: [LibraryEntry], urlByID: [String: URL]) async -> [TrackFacts] {
+    private func resolvePool(entries: [LibraryEntry], urlByID: [String: URL]) async -> SessionPool {
         let analyzer = TrackAnalyzer()
         let cache = GRDBTrackFactsCache()
         // analyze-on-miss decodes the track's URL on-device; only the numeric result
@@ -270,7 +320,8 @@ final class LiveSessionViewModel: ObservableObject {
             guard let url = urlByID[item.localID] else { return nil }
             return await analyzer.analyze(url: url)?.result
         }
-        let resolver = SessionPoolResolver(coordinator: coordinator, cache: cache, catalog: [])
+        let resolver = SessionPoolResolver(coordinator: coordinator, cache: cache,
+                                           catalog: CatalogLibrary.shared.stockedTracks)
         return await resolver.resolvedPool(entries: entries, targetCadence: targetCadence)
     }
 
@@ -302,14 +353,31 @@ final class LiveSessionViewModel: ObservableObject {
                     trackID: s.nowPlayingTrackID,
                     targetCadence: s.targetCadence,
                     currentCadence: s.currentCadence) {
+                    self.runResponses.append(response)
                     await self.effStore.record(response)
                     await loop.updateEffectiveness(self.effStore.allByMode())
                 }
+                self.nowPlayingReason = await loop.lastReason
 
                 // Record the run for the dashboard (distance, pace log, track plays).
                 self.recorder?.sample(paceSecPerKm: s.currentPaceSecPerKm,
                                       bpm: s.nowPlayingBPM ?? 0,
                                       trackID: s.nowPlayingTrackID, at: Date())
+
+                // Coach layer. `isTransitioning` is true on the sample where the track
+                // changed, so a cue can never land on a crossfade; the engine holds it
+                // for the next second instead of dropping it.
+                let changed = s.nowPlayingTrackID != self.lastCoachTrackID
+                self.lastCoachTrackID = s.nowPlayingTrackID
+                if let cue = self.coach.update(CoachCueEngine.Sample(
+                    distanceMeters: self.recorder?.distanceMeters ?? 0,
+                    elapsedSeconds: self.elapsedSeconds,
+                    paceSecPerKm: s.currentPaceSecPerKm,
+                    targetPaceSecPerKm: s.targetPaceSecPerKm,
+                    goalMeters: self.targetDistanceMeters,
+                    isTransitioning: changed)) {
+                    self.coachVoice.speak(cue)
+                }
 
                 // Natural-fatigue context: estimate from the cadence stream and feed the
                 // coefficient to the loop, so the next selection softens its push when

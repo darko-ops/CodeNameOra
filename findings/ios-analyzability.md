@@ -61,5 +61,15 @@ path + long-tail filler, with the fallback catalog guaranteeing day-one magic.
 4. It prints a markdown table: source → `assetURL` present? → `AVAssetReader` succeeded? → error.
 5. Paste the device output into this file under "Device run results" below and flip ⚠️ rows to ✅/❌.
 
+_The probe is kept compiling: it type-checks against the current iOS SDK
+(`swiftc -parse -target arm64-apple-ios16.0 -sdk $(xcrun --sdk iphoneos --show-sdk-path)
+Spikes/AnalyzabilityProbe.swift`), so step 1 won't fail on a stale file. Running it
+still needs the device._
+
 ### Device run results
 _PENDING — no iOS device available in the authoring environment. Fill from a real run._
+
+**Why this run gates Phase 4, not just this document:** the contributor path only has
+inputs if a real fraction of a real library exposes `assetURL`. If the device run shows
+that fraction is near zero, Phase 4 has nothing to analyze regardless of what the
+accuracy verdict says, and the product stays lookup + catalog (Phases 1–2).

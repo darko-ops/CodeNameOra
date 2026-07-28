@@ -49,11 +49,13 @@ public actor LiveLoop {
     private var engine: SelectionEngine
     private let playback: any PlaybackControlling
     private var candidates: [TrackFacts]
+    /// Which candidates are Dromo's own catalog (equal-fit tiebreak only).
+    private var origins: [String: TrackOrigin] = [:]
     private var smoother: CadenceSmoother
     private var preferences: [String: Double]
     /// Learned behavioral effectiveness, per mode: [mode: [trackID: 0…1]]. Selection
     /// uses the sub-map for the mode in effect at pick time.
-    private var effectivenessByMode: [PaceMode: [String: Double]] = [:]
+    private var effectivenessByMode: [PaceMode: [String: LearnedEffectiveness]] = [:]
     /// Natural-fatigue coefficient (1.0 fresh → ~0.2 fatigued). Softens the engine's
     /// push so a tiring runner gets gentler nudges, not harder ones.
     private var fatigue: Double = 1.0
@@ -61,6 +63,10 @@ public actor LiveLoop {
     private let targetCadence: Double
 
     public private(set) var state: LoopState
+
+    /// Why the current track was chosen — surfaced by the HUD's "why this track?" so
+    /// the answer is the engine's actual reason, not a story reconstructed after.
+    public private(set) var lastReason: SelectionEngine.Reason?
 
     /// Optional debug sink — the app routes this to os.Logger / print so a device run
     /// shows exactly what the loop is doing while it "searches for a track".
@@ -70,6 +76,7 @@ public actor LiveLoop {
         engine: SelectionEngine = .init(),
         playback: any PlaybackControlling,
         candidates: [TrackFacts],
+        origins: [String: TrackOrigin] = [:],
         targetPaceSecPerKm: Double,
         cadenceModel: CadenceModel = .init(),
         smoother: CadenceSmoother = .init(),
@@ -80,6 +87,7 @@ public actor LiveLoop {
         self.engine = engine
         self.playback = playback
         self.candidates = candidates
+        self.origins = origins
         self.smoother = smoother
         self.preferences = preferences
         self.config = config
@@ -129,6 +137,16 @@ public actor LiveLoop {
              + "(\(newCandidates.filter { $0.bpm > 0 }.count) with known BPM)")
     }
 
+    /// Replace the pool AND its provenance, so "prefer the runner's own music at
+    /// equal fit" survives the background upgrade.
+    public func updateCandidates(_ pool: SessionPool) {
+        candidates = pool.facts
+        origins = pool.origins
+        log?("pool updated → \(pool.count) tracks "
+             + "(\(pool.libraryTracks.count) yours, \(pool.catalogTracks.count) catalog, "
+             + "\(pool.facts.filter { $0.bpm > 0 }.count) with known BPM)")
+    }
+
     /// Update the per-user taste weights mid-session, so likes/skips (Phase 6 A2)
     /// steer subsequent selections live.
     public func updatePreferences(_ newPreferences: [String: Double]) {
@@ -137,8 +155,13 @@ public actor LiveLoop {
 
     /// Update the learned behavioral effectiveness (per mode) mid-session, so what the
     /// runner's response taught us steers the very next selection.
-    public func updateEffectiveness(_ byMode: [PaceMode: [String: Double]]) {
+    public func updateEffectiveness(_ byMode: [PaceMode: [String: LearnedEffectiveness]]) {
         effectivenessByMode = byMode
+    }
+
+    /// Convenience for callers holding bare values — treats each as fully earned.
+    public func updateEffectiveness(_ byMode: [PaceMode: [String: Double]]) {
+        effectivenessByMode = byMode.mapValues { $0.mapValues { LearnedEffectiveness.trusted($0) } }
     }
 
     /// Update the natural-fatigue coefficient mid-session (1.0 fresh → ~0.2 fatigued),
@@ -166,7 +189,8 @@ public actor LiveLoop {
                 candidates: candidates,
                 preferences: preferences,
                 effectiveness: effectivenessByMode[mode] ?? [:],
-                fatigue: fatigue
+                fatigue: fatigue,
+                origins: origins
             ) else {
                 state.nowPlayingTrackID = nil
                 log?("⚠️ no playable track — gave up after skipping \(skipped) "
@@ -176,6 +200,7 @@ public actor LiveLoop {
 
             log?("trying \(decision.trackID) (\(Int(decision.effectiveBPM)) BPM)…")
             if await playback.play(trackID: decision.trackID) {
+                lastReason = decision.reason
                 state.nowPlayingTrackID = decision.trackID
                 state.nowPlayingBPM = decision.effectiveBPM
                 state.nudge = decision.nudge

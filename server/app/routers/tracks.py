@@ -3,6 +3,7 @@
 GET   /v1/track?isrc=… | ?fingerprint=…   → facts or 404
 POST  /v1/track                            → populate (201 created | 200 existing)
 POST  /v1/track/batch                      → bulk lookup for library import
+GET   /v1/track/coverage                   → aggregate counters (telemetry)
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from ..schemas import (
     BatchLookupItem,
     BatchLookupResponse,
     ConfirmIn,
+    CoverageStats,
     PopulateResponse,
     TrackFactsIn,
     TrackFactsOut,
@@ -88,3 +90,11 @@ async def batch_lookup(
             )
         )
     return BatchLookupResponse(results=results)
+
+
+@router.get("/coverage", response_model=CoverageStats)
+async def coverage(session: AsyncSession = Depends(get_session)) -> CoverageStats:
+    """Aggregate counters: how many recordings the table knows, how many are
+    confident, and which analysis versions produced them. Lets a client show honest
+    coverage and lets us watch the shared table grow as contributors populate it."""
+    return CoverageStats.model_validate(await crud.coverage(session))

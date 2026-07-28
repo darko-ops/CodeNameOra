@@ -9,6 +9,11 @@ import DromoCore
 struct LiveHUDView: View {
     @ObservedObject var vm: LiveSessionViewModel
     @Environment(\.dismiss) private var dismiss
+    /// "Why this track?" — off by default. A run is hands-free; the explanation is
+    /// there for the moment someone wonders, not a permanent readout.
+    @State private var showingReason = false
+    /// Post-run "What moved you", presented when the runner ends the session.
+    @State private var showingSummary = false
 
     var body: some View {
         ZStack {
@@ -32,12 +37,23 @@ struct LiveHUDView: View {
         .overlay { paceAlertOverlay }
         .animation(.easeInOut(duration: 0.4), value: vm.paceAlert)
         .overlay(alignment: .topTrailing) {
-            Button("End") { dismiss() }
+            Button("End") {
+                // Stop first so the final track's response is finalized and counted in
+                // the summary; without this the last (often longest) play is missing.
+                vm.stop()
+                if RunHighlights.isEmpty(vm.runResponses) { dismiss() } else { showingSummary = true }
+            }
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.oraTextSecondary)
                 .padding(Spacing.md)
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showingSummary) {
+            LiveRunSummarySheet(responses: vm.runResponses, labels: vm.labelsByID) {
+                showingSummary = false
+                dismiss()
+            }
+        }
         .onAppear { vm.start() }
         .onDisappear { vm.stop() }
     }
@@ -178,10 +194,13 @@ struct LiveHUDView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.oraTextPrimary)
                     .lineLimit(1)
-                Text(track?.artist ?? "—")
-                    .font(.system(size: 13))
-                    .foregroundColor(.oraTextSecondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(track?.artist ?? "—")
+                        .font(.system(size: 13))
+                        .foregroundColor(.oraTextSecondary)
+                        .lineLimit(1)
+                    provenanceBadge
+                }
             }
             Spacer(minLength: 0)
             if let bpm = vm.state.nowPlayingBPM {
@@ -197,7 +216,51 @@ struct LiveHUDView: View {
         .padding(Spacing.md)
         .background(Color.oraSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showingReason.toggle() } }
+        .overlay(alignment: .bottom) { reasonPopover }
         .animation(.easeInOut(duration: 0.4), value: vm.state.nowPlayingTrackID)
+    }
+
+    /// The engine's ACTUAL reason for this pick, not a plausible story assembled after
+    /// the fact — `LiveLoop` reports what the decision was made on.
+    @ViewBuilder
+    private var reasonPopover: some View {
+        if showingReason, let reason = vm.nowPlayingReason {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(reason.label)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(nudgeColor)
+                Text(reason.detail)
+                    .font(.system(size: 11))
+                    .foregroundColor(.oraTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.oraSurfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .offset(y: 64)
+            .transition(.opacity)
+        }
+    }
+
+    /// Where this track came from. Deliberately quiet — it's reassurance ("that was
+    /// yours") and a visible measure of the library taking over as coverage grows,
+    /// not a label the runner has to read mid-stride. Hidden until something plays.
+    @ViewBuilder
+    private var provenanceBadge: some View {
+        if vm.state.nowPlayingTrackID != nil {
+            let fromLibrary = vm.nowPlayingOrigin == .library
+            Text(fromLibrary ? "YOUR LIBRARY" : "DROMO MIX")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.5)
+                .foregroundColor(fromLibrary ? .zoneSteady : .oraTextMuted)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background((fromLibrary ? Color.zoneSteady : Color.oraTextMuted).opacity(0.12))
+                .clipShape(Capsule())
+        }
     }
 
     // MARK: Feedback controls

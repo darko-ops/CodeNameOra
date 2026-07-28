@@ -64,6 +64,15 @@ Because the BPM algorithm is identical vDSP on macOS and iOS, **accuracy is meas
 faithfully on a Mac**; only per-track battery/CPU needs an on-device run (per-track
 time *is* captured here).
 
+Check the set first — it costs a second and catches a missing file or a thin `octave`
+group before the run rather than after:
+
+```bash
+python3 scripts/validate_groundtruth.py /abs/path/groundtruth.csv
+```
+
+Then measure:
+
 ```bash
 cd Packages/DromoCore
 DROMO_BPM_GROUNDTRUTH=/abs/path/groundtruth.csv \
@@ -79,6 +88,15 @@ the GREEN/YELLOW/RED verdict against the bar above.
 
 ### Results (fill from the run)
 _PENDING._
+
+**The harness itself has been verified end to end** (CSV parse → decode →
+`TrackAnalyzerCore` → metrics → report) against generated click tracks — see
+[bpm-accuracy-instrument-check.md](bpm-accuracy-instrument-check.md). That check says
+nothing about accuracy on real music; it exists so a broken instrument is found before
+you assemble the set. It did surface two things to watch for in the real run: an
+uneven beat produced an UNFLAGGED half-tempo reading (unrecoverable by
+`SelectionEngine.effectiveBPM`), and confidence saturated at 1.0 even on the wrong
+reading — which would make the YELLOW branch's confidence gating unavailable.
 
 | Metric | Value |
 |---|---|
@@ -100,7 +118,8 @@ _PENDING — this is the table that matters most; an 85% average can hide 50% on
 |---|---|
 | GREEN/YELLOW/RED bar, stated up front | ✅ `AccuracyBar` |
 | Metric + verdict computation | ✅ `BPMAccuracy.evaluate` — **7 unit tests** on the math (GREEN/RED/octave/calibration/by-difficulty) |
-| Runnable harness over real files (real pipeline) | ✅ `BPMAccuracyHarnessTests` — auto-skips without data |
+| Runnable harness over real files (real pipeline) | ✅ `BPMAccuracyHarnessTests` — auto-skips without data; **verified end-to-end on synthetic input** |
+| Ground-truth CSV template + pre-flight validator | ✅ `findings/groundtruth-template.csv`, `scripts/validate_groundtruth.py` |
 | Ground-truth set of real owned tracks | ⛔ you provide (copyright + no device here) |
 | The actual accuracy numbers + verdict | ⛔ **run the harness** — cannot be produced or guessed here |
 | Per-track battery/CPU on-device | ⛔ needs the phone (time is captured cross-platform) |

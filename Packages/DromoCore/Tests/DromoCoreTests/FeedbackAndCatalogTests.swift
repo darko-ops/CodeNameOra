@@ -3,6 +3,9 @@ import XCTest
 
 /// A preference store spy that also records whether it was touched.
 private final class SpyPreferences: PreferenceStoring, @unchecked Sendable {
+    func reset() async {
+        lock.lock(); records.removeAll(); w.removeAll(); lock.unlock()
+    }
     private let lock = NSLock()
     private(set) var records: [(SubjectiveSignal, String)] = []
     private var w: [String: Double] = [:]

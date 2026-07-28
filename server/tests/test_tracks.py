@@ -122,3 +122,54 @@ async def test_bpm_range_validation(client):
     assert r.status_code == 422
     r = await client.post("/v1/track", json=_facts(bpm_confidence=1.5))
     assert r.status_code == 422
+
+
+# --- Coverage counters (Phase 2 telemetry) ----------------------------------
+
+
+async def test_coverage_starts_empty(client):
+    """An empty table reports zeros, not nulls — the client renders this directly."""
+    r = await client.get("/v1/track/coverage")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tracks"] == 0
+    assert body["confident"] == 0
+    assert body["by_analysis_version"] == {}
+    assert body["mean_confidence"] is None
+
+
+async def test_coverage_counts_identity_confidence_and_versions(client):
+    await client.post("/v1/track", json=_facts(isrc="USRC17607839", bpm_confidence=0.92))
+    await client.post(
+        "/v1/track",
+        json=_facts(
+            isrc=None,
+            fingerprint="chroma-abc",
+            bpm_confidence=0.3,
+            analysis_version="vdsp-2",
+        ),
+    )
+
+    body = (await client.get("/v1/track/coverage")).json()
+
+    assert body["tracks"] == 2
+    assert body["with_isrc"] == 1
+    assert body["with_fingerprint"] == 1
+    # Only the 0.92 reading clears the confidence bar; the 0.3 one is a guess.
+    assert body["confident"] == 1
+    assert body["by_analysis_version"] == {"vdsp-1": 1, "vdsp-2": 1}
+    assert body["mean_confidence"] == pytest.approx(0.61, abs=0.01)
+
+
+async def test_coverage_counts_confirmed_recordings(client):
+    created = await client.post("/v1/track", json=_facts())
+    track_id = created.json()["track"]["id"]
+
+    assert (await client.get("/v1/track/coverage")).json()["confirmed"] == 0
+
+    await client.post(
+        f"/v1/track/{track_id}/confirm",
+        json={"signal": "confirm", "client_id": "device-a"},
+    )
+
+    assert (await client.get("/v1/track/coverage")).json()["confirmed"] == 1

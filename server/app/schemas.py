@@ -101,3 +101,17 @@ class BatchLookupItem(BaseModel):
 
 class BatchLookupResponse(BaseModel):
     results: list[BatchLookupItem]
+
+
+class CoverageStats(BaseModel):
+    """How much the Global Track Table actually knows — the number that says whether
+    lookup-first is paying off. Aggregates only; no per-recording data leaves here
+    beyond what a lookup would already return."""
+
+    tracks: int
+    with_isrc: int
+    with_fingerprint: int
+    confident: int
+    confirmed: int
+    by_analysis_version: dict[str, int]
+    mean_confidence: float | None = None
