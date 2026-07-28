@@ -64,6 +64,10 @@ public actor LiveLoop {
 
     public private(set) var state: LoopState
 
+    /// Why the current track was chosen — surfaced by the HUD's "why this track?" so
+    /// the answer is the engine's actual reason, not a story reconstructed after.
+    public private(set) var lastReason: SelectionEngine.Reason?
+
     /// Optional debug sink — the app routes this to os.Logger / print so a device run
     /// shows exactly what the loop is doing while it "searches for a track".
     private let log: (@Sendable (String) -> Void)?
@@ -196,6 +200,7 @@ public actor LiveLoop {
 
             log?("trying \(decision.trackID) (\(Int(decision.effectiveBPM)) BPM)…")
             if await playback.play(trackID: decision.trackID) {
+                lastReason = decision.reason
                 state.nowPlayingTrackID = decision.trackID
                 state.nowPlayingBPM = decision.effectiveBPM
                 state.nudge = decision.nudge

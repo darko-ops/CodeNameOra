@@ -26,6 +26,14 @@ final class LiveSessionViewModel: ObservableObject {
     /// Origin per track id, so the HUD can badge what came from the runner's library.
     private var origins: [String: TrackOrigin] = [:]
 
+    /// Finalized responses from THIS run — the evidence behind the post-run
+    /// "What moved you". Same objects the learner consumed, so the summary and the
+    /// learner can never tell different stories about the same run.
+    @Published private(set) var runResponses: [TrackResponse] = []
+
+    /// Why the engine chose what's playing, for the HUD's "why this track?".
+    @Published private(set) var nowPlayingReason: SelectionEngine.Reason?
+
     /// Where the now-playing track came from (defaults to the runner's own music).
     var nowPlayingOrigin: TrackOrigin {
         guard let id = state.nowPlayingTrackID else { return .library }
@@ -227,7 +235,8 @@ final class LiveSessionViewModel: ObservableObject {
         paceAlert = nil
         // Close out the final track so its response is learned too.
         if let response = attributor.flush() {
-            Task { await effStore.record(response) }
+            runResponses.append(response)
+            Task { [effStore] in await effStore.record(response) }
         }
         // Persist the run (unless it was an accidental, too-short open).
         if var recorder {
@@ -323,9 +332,11 @@ final class LiveSessionViewModel: ObservableObject {
                     trackID: s.nowPlayingTrackID,
                     targetCadence: s.targetCadence,
                     currentCadence: s.currentCadence) {
+                    self.runResponses.append(response)
                     await self.effStore.record(response)
                     await loop.updateEffectiveness(self.effStore.allByMode())
                 }
+                self.nowPlayingReason = await loop.lastReason
 
                 // Record the run for the dashboard (distance, pace log, track plays).
                 self.recorder?.sample(paceSecPerKm: s.currentPaceSecPerKm,

@@ -48,6 +48,15 @@ struct LibraryView: View {
                     }
                     .accessibilityLabel("Music integrations")
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        LearnedDataView()
+                    } label: {
+                        Image(systemName: "brain")
+                            .foregroundColor(.zoneSteady)
+                    }
+                    .accessibilityLabel("What Dromo has learned")
+                }
                 if showsDoneButton {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }

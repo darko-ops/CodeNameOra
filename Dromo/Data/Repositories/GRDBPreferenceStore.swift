@@ -39,4 +39,11 @@ struct GRDBPreferenceStore: PreferenceStoring {
         case .skipped: return -0.3
         }
     }
+
+    /// Erase stated taste (likes/skips). Same contract as the effectiveness store.
+    func reset() async {
+        try? await dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM user_preferences")
+        }
+    }
 }

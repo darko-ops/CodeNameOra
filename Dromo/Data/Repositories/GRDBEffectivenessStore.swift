@@ -56,6 +56,14 @@ struct GRDBEffectivenessStore: EffectivenessStoring {
         }) ?? [:]
     }
 
+    /// Erase every learned response. Local and complete — this data never left the
+    /// device, so there is nothing else to revoke.
+    func reset() async {
+        try? await dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM track_effectiveness")
+        }
+    }
+
     /// All modes at once — used to prime the live loop at session start.
     func allByMode() async -> [PaceMode: [String: LearnedEffectiveness]] {
         var result: [PaceMode: [String: LearnedEffectiveness]] = [:]

@@ -17,10 +17,56 @@ public struct SelectionEngine {
         case speedUp, hold, slowDown
     }
 
+    /// Why this track, in the runner's terms. Derived from which term actually decided
+    /// the pick, so the HUD's "why this track?" answers with the real reason rather
+    /// than a plausible-sounding story.
+    public enum Reason: Sendable, Equatable {
+        /// Its tempo fits what the moment needs.
+        case tempoFit
+        /// It has demonstrably moved this runner the right way before.
+        case learnedPush(observations: Int)
+        /// Never played in this mode — picked to find out.
+        case exploring
+        /// The runner said they like it.
+        case taste
+
+        public var label: String {
+            switch self {
+            case .tempoFit:     return "Right tempo for your pace"
+            case .learnedPush:  return "This one moves you"
+            case .exploring:    return "New to your run — seeing how it lands"
+            case .taste:        return "You like this one"
+            }
+        }
+
+        public var detail: String {
+            switch self {
+            case .tempoFit:
+                return "Its tempo is closest to what your cadence needs right now."
+            case let .learnedPush(observations):
+                return "Across \(observations) play\(observations == 1 ? "" : "s"), your "
+                     + "cadence moved the right way while this played."
+            case .exploring:
+                return "Dromo hasn't measured this one at your pace yet, so it's finding out."
+            case .taste:
+                return "You liked this, and it fits the tempo you need."
+            }
+        }
+    }
+
     public struct Decision: Sendable, Equatable {
         public let trackID: String
         public let effectiveBPM: Double   // the octave interpretation used for pacing
         public let nudge: Nudge
+        public let reason: Reason
+
+        public init(trackID: String, effectiveBPM: Double, nudge: Nudge,
+                    reason: Reason = .tempoFit) {
+            self.trackID = trackID
+            self.effectiveBPM = effectiveBPM
+            self.nudge = nudge
+            self.reason = reason
+        }
     }
 
     private struct Scored { let facts: TrackFacts; let score: Double }
@@ -83,7 +129,9 @@ public struct SelectionEngine {
 
         return Decision(trackID: best.facts.id,
                         effectiveBPM: effectiveBPM(best.facts, targetCadence: targetCadence),
-                        nudge: nudge)
+                        nudge: nudge,
+                        reason: reason(for: best.facts, learned: effectiveness[best.facts.id],
+                                       preference: preferences[best.facts.id] ?? 0))
     }
 
     /// Convenience for callers holding bare 0…1 values with no history to model —
@@ -102,6 +150,20 @@ public struct SelectionEngine {
                    candidates: candidates, preferences: preferences,
                    effectiveness: effectiveness.mapValues { LearnedEffectiveness.trusted($0) },
                    fatigue: fatigue, origins: origins)
+    }
+
+    /// Which term earned this pick. Checked in the order the runner would care about:
+    /// demonstrated behaviour first (it's the strongest claim and needs evidence to
+    /// make), then curiosity, then stated taste, else the tempo did the work.
+    private func reason(for facts: TrackFacts, learned: LearnedEffectiveness?,
+                        preference: Double) -> Reason {
+        if let learned, learned.value > 0.5,
+           learned.trust(minObservations: config.minObservationsToTrust) >= 1 {
+            return .learnedPush(observations: learned.observations)
+        }
+        if learned == nil || learned?.isUnplayed == true { return .exploring }
+        if preference > 0.5 { return .taste }
+        return .tempoFit
     }
 
     // MARK: - Octave resolution (the 85-vs-170 problem)

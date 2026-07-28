@@ -16,6 +16,10 @@ public protocol EffectivenessStoring: Sendable {
     /// The same estimates WITH their observation counts, which is what the engine needs
     /// to weight a signal by the evidence behind it rather than acting on one play.
     func learned(for mode: PaceMode) async -> [String: LearnedEffectiveness]
+    /// Erase everything learned about this runner. Required, not optional: data this
+    /// private must be deletable, and a store that silently couldn't honour it would
+    /// make the Settings promise a lie.
+    func reset() async
 }
 
 // NOTE: deliberately NO default implementation of `learned(for:)`. A protocol-extension
@@ -45,4 +49,6 @@ public actor InMemoryEffectivenessStore: EffectivenessStoring {
     public func learned(for mode: PaceMode) -> [String: LearnedEffectiveness] {
         byMode[mode] ?? [:]
     }
+
+    public func reset() { byMode.removeAll() }
 }

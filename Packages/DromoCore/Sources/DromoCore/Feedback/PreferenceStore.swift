@@ -7,6 +7,9 @@ import Foundation
 public protocol PreferenceStoring: Sendable {
     func record(_ signal: SubjectiveSignal, trackID: String) async
     func weights() async -> [String: Double]
+    /// Erase stated taste. Same contract as the effectiveness store: on-device data
+    /// the runner can delete outright.
+    func reset() async
 }
 
 /// In-memory implementation for previews/tests. Weight starts neutral (0.5) and
@@ -22,6 +25,8 @@ public actor InMemoryPreferenceStore: PreferenceStoring {
     }
 
     public func weights() -> [String: Double] { weightByID }
+
+    public func reset() { weightByID.removeAll() }
 
     static func delta(for signal: SubjectiveSignal) -> Double {
         switch signal {
