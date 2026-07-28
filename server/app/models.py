@@ -9,7 +9,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Float, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -81,4 +89,35 @@ class TrackConfirmation(Base):
     client_id: Mapped[str] = mapped_column(String(64), index=True)
     signal: Mapped[str] = mapped_column(String(16))   # 'confirm' | 'off_tempo'
     observed_bpm: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TrackSubmission(Base):
+    """One device's analysis of one recording (Phase 4 contributor path).
+
+    Kept separately from the canonical facts so consensus can be RECOMPUTED rather
+    than folded destructively into a single row: a wrong reading that arrives first
+    must be correctable by later agreement, and an outlier must be identifiable after
+    the fact. One row per (track, client, analysis_version) — a single device cannot
+    out-vote the crowd by submitting repeatedly.
+    """
+
+    __tablename__ = "track_submissions"
+    __table_args__ = (
+        UniqueConstraint(
+            "track_id", "client_id", "analysis_version", name="uq_submission"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    track_id: Mapped[str] = mapped_column(String(32), index=True)
+    client_id: Mapped[str] = mapped_column(String(64), index=True)
+
+    bpm: Mapped[float] = mapped_column(Float)
+    bpm_confidence: Mapped[float] = mapped_column(Float)
+    analysis_version: Mapped[str] = mapped_column(String(32))
+    #: Disagrees with the consensus cluster — retained, not deleted, so a reading that
+    #: looks like an outlier today can be re-judged when more devices report.
+    is_outlier: Mapped[bool] = mapped_column(Boolean, default=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

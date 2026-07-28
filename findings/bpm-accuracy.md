@@ -124,6 +124,22 @@ _PENDING — this is the table that matters most; an 85% average can hide 50% on
 | The actual accuracy numbers + verdict | ⛔ **run the harness** — cannot be produced or guessed here |
 | Per-track battery/CPU on-device | ⛔ needs the phone (time is captured cross-platform) |
 
+### Phase 4 is built, and closed
+
+The contributor path exists in code but publishes nothing. `ContributionPolicy.current`
+in DromoCore is `.pending`, and a test asserts it: nothing reaches the Global Track
+Table, not even a maximally-confident reading, and the Settings toggle is disabled with
+the reason shown.
+
+**To open it, both of these — not one:**
+1. fill the Results and By-difficulty tables above from a real harness run, and record
+   the GREEN / YELLOW / RED verdict;
+2. change `ContributionPolicy.current` to match that verdict.
+
+A verdict in code with blank tables here is exactly the fabrication the bar exists to
+prevent. `RED` retires the feature through the same constant; `YELLOW` publishes only
+readings at or above `yellowFloor` (0.8), which is the stated mitigation.
+
 **Bottom line:** the instrument is ready and trustworthy (its math is tested); the
 verdict is intentionally blank until a real run fills it. Do not build further layers
 that assume GREEN until this reads GREEN (or YELLOW with the fallback rule wired).

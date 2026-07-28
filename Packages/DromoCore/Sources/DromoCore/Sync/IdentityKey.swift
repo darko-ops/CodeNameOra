@@ -12,6 +12,15 @@ public struct IdentityKey: Codable, Equatable, Sendable {
     }
 
     public var isValid: Bool { isrc != nil || fingerprint != nil }
+
+    /// One canonical string for this recording, for keying local sets and caches.
+    /// ISRC wins when present so the same recording keys identically whether or not
+    /// a fingerprint was computed.
+    public var storageKey: String {
+        if let isrc { return "isrc:" + isrc }
+        if let fingerprint { return "fp:" + fingerprint }
+        return ""
+    }
 }
 
 /// A track in the user's library, reduced to its local id + identity key. This is

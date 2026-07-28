@@ -45,6 +45,7 @@ struct LearnedDataView: View {
     @StateObject private var model = LearnedDataModel()
     @State private var confirming = false
     @State private var coachEnabled = CoachVoice.isEnabled
+    @State private var contributeEnabled = TrackContributor.isEnabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -97,6 +98,7 @@ struct LearnedDataView: View {
             }
 
             coachSection
+            contributeSection
 
             Spacer()
         }
@@ -124,6 +126,42 @@ struct LearnedDataView: View {
                 }
             }
             .tint(.zoneSteady)
+        }
+        .padding(Spacing.md)
+        .background(Color.oraSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// Phase 4: help tag songs for every runner. Shown even while it's unavailable,
+    /// with the reason — a toggle that silently does nothing is worse than one that
+    /// explains itself.
+    private var contributeSection: some View {
+        let policy = ContributionPolicy.current
+        return VStack(alignment: .leading, spacing: Spacing.sm) {
+            Toggle(isOn: Binding(get: { contributeEnabled },
+                                 set: { contributeEnabled = $0; TrackContributor.isEnabled = $0 })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Help tag songs")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(policy.allowsContribution ? .oraTextPrimary : .oraTextSecondary)
+                    Text("When you're charging on Wi-Fi, Dromo works out the tempo of "
+                         + "songs you own and shares just that number, so other runners "
+                         + "with the same song don't have to. Your audio never leaves "
+                         + "your phone.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.oraTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(.zoneSteady)
+            .disabled(!policy.allowsContribution)
+
+            if let reason = policy.closedReason {
+                Text(reason)
+                    .font(.system(size: 11))
+                    .foregroundColor(.oraWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(Spacing.md)
         .background(Color.oraSurface)
