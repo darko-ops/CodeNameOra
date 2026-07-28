@@ -18,6 +18,19 @@ final class LiveSessionViewModel: ObservableObject {
 
     /// Wall-clock elapsed for the HUD's TIME readout (frozen while paused).
     @Published private(set) var elapsedSeconds: Double = 0
+
+    /// How much of the runner's OWN library this session can pace to — drives the
+    /// "from your library" story as enrichment fills coverage in over time.
+    @Published private(set) var coverage = LibraryCoverage(total: 0, tagged: 0)
+
+    /// Origin per track id, so the HUD can badge what came from the runner's library.
+    private var origins: [String: TrackOrigin] = [:]
+
+    /// Where the now-playing track came from (defaults to the runner's own music).
+    var nowPlayingOrigin: TrackOrigin {
+        guard let id = state.nowPlayingTrackID else { return .library }
+        return origins[id] ?? .library
+    }
     /// Pause state — freezes the loop, the clock, and playback (HUD Pause button).
     @Published private(set) var isPaused = false
 
@@ -35,7 +48,9 @@ final class LiveSessionViewModel: ObservableObject {
     private let targetCadence: Double
 
     private let source = PaceCadenceSource()
-    private let playback = MediaPlayerPlaybackController()
+    /// Routes catalog ids to bundled audio and library ids to the system player, so
+    /// the loop sees one playback surface whether or not the catalog is stocked.
+    private let playback = CatalogPlaybackController()
     private var loop: LiveLoop?
 
     /// Hard ±20 s/km pace alarm: beeps (slow vs fast) over ducked music, repeating
@@ -142,8 +157,9 @@ final class LiveSessionViewModel: ObservableObject {
 
     func start() {
         Task { @MainActor in
-            // 1) Instant pool from the user's real (playable) tracks. No catalog here:
-            //    catalog tracks have no playable audio, so they'd just be dead weight.
+            // 1) Instant pool: the user's real (playable) tracks PLUS whatever of
+            //    Dromo's catalog is actually stocked with audio in this build, so a
+            //    library with no usable tempo still has something to pace to.
             //    Untagged tracks pick up their BPM from the enrichment cache (GetSongBPM)
             //    so they're tempo-matchable once the background lookup has run.
             let enriched = await EnrichedBPMStore().all()
@@ -157,14 +173,16 @@ final class LiveSessionViewModel: ObservableObject {
             Self.log("enrichment cache: \(enriched.count) BPMs; \(known)/\(providerEntries.count) pool tracks have BPM")
             let initial = SessionPoolResolver.initialPool(entries: providerEntries,
                                                           targetCadence: targetCadence,
-                                                          catalog: [])
-            let playable = initial.filter { UInt64($0.id) != nil }.count
+                                                          catalog: CatalogLibrary.shared.stockedTracks)
+            coverage = LibraryCoverage.measure(pool: initial)
+            origins = initial.origins
             Self.log("""
                 start: \(providerEntries.count) library tracks → initial pool \(initial.count) \
-                (\(playable) playable, \(initial.count - playable) catalog) · \
-                target \(Int(targetPaceSecPerKm))s/km
+                (\(initial.libraryTracks.count) yours, \(initial.catalogTracks.count) catalog, \
+                \(coverage.tagged) tempo-matched) · target \(Int(targetPaceSecPerKm))s/km
                 """)
-            let loop = LiveLoop(playback: playback, candidates: initial,
+            let loop = LiveLoop(playback: playback, candidates: initial.facts,
+                                origins: initial.origins,
                                 targetPaceSecPerKm: targetPaceSecPerKm, log: Self.log)
             self.loop = loop
             wire(loop)
@@ -185,6 +203,8 @@ final class LiveSessionViewModel: ObservableObject {
             let withISRC = entries.filter { $0.identity != nil }.count
             Self.log("identity: \(withISRC)/\(entries.count) have ISRC, \(urlByID.count) analyzable URLs")
             let upgraded = await resolvePool(entries: entries, urlByID: urlByID)
+            coverage = LibraryCoverage.measure(pool: upgraded)
+            origins = upgraded.origins
             await loop.updateCandidates(upgraded)
         }
     }
@@ -259,7 +279,7 @@ final class LiveSessionViewModel: ObservableObject {
         return (enriched, urls)
     }
 
-    private func resolvePool(entries: [LibraryEntry], urlByID: [String: URL]) async -> [TrackFacts] {
+    private func resolvePool(entries: [LibraryEntry], urlByID: [String: URL]) async -> SessionPool {
         let analyzer = TrackAnalyzer()
         let cache = GRDBTrackFactsCache()
         // analyze-on-miss decodes the track's URL on-device; only the numeric result
@@ -270,7 +290,8 @@ final class LiveSessionViewModel: ObservableObject {
             guard let url = urlByID[item.localID] else { return nil }
             return await analyzer.analyze(url: url)?.result
         }
-        let resolver = SessionPoolResolver(coordinator: coordinator, cache: cache, catalog: [])
+        let resolver = SessionPoolResolver(coordinator: coordinator, cache: cache,
+                                           catalog: CatalogLibrary.shared.stockedTracks)
         return await resolver.resolvedPool(entries: entries, targetCadence: targetCadence)
     }
 

@@ -178,10 +178,13 @@ struct LiveHUDView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.oraTextPrimary)
                     .lineLimit(1)
-                Text(track?.artist ?? "—")
-                    .font(.system(size: 13))
-                    .foregroundColor(.oraTextSecondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(track?.artist ?? "—")
+                        .font(.system(size: 13))
+                        .foregroundColor(.oraTextSecondary)
+                        .lineLimit(1)
+                    provenanceBadge
+                }
             }
             Spacer(minLength: 0)
             if let bpm = vm.state.nowPlayingBPM {
@@ -198,6 +201,24 @@ struct LiveHUDView: View {
         .background(Color.oraSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .animation(.easeInOut(duration: 0.4), value: vm.state.nowPlayingTrackID)
+    }
+
+    /// Where this track came from. Deliberately quiet — it's reassurance ("that was
+    /// yours") and a visible measure of the library taking over as coverage grows,
+    /// not a label the runner has to read mid-stride. Hidden until something plays.
+    @ViewBuilder
+    private var provenanceBadge: some View {
+        if vm.state.nowPlayingTrackID != nil {
+            let fromLibrary = vm.nowPlayingOrigin == .library
+            Text(fromLibrary ? "YOUR LIBRARY" : "DROMO MIX")
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.5)
+                .foregroundColor(fromLibrary ? .zoneSteady : .oraTextMuted)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background((fromLibrary ? Color.zoneSteady : Color.oraTextMuted).opacity(0.12))
+                .clipShape(Capsule())
+        }
     }
 
     // MARK: Feedback controls

@@ -19,6 +19,10 @@ struct MusicIntegrationsView: View {
 
                 MusicProviderButtons()
 
+                // How much of their own library Dromo can pace to today — the bridge
+                // from "running on Dromo's mixes" to "running on your music".
+                LibraryCoverageCard(library: coordinator.library)
+
                 if let email = coordinator.account.currentEmail {
                     Divider().overlay(Color.oraTextMuted.opacity(0.3))
 
