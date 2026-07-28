@@ -4,20 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Dromo — Your library, locked to your pace.</title>
-  <meta name="description" content="Dromo serves music from your own library whose tempo matches your running cadence — then nudges you faster or slower to keep you on target. Pace-adaptive running music for iOS, built privacy-first." />
+  <title>Dromo — A DJ that learns how you run.</title>
+  <meta name="description" content="Dromo matches music to your running cadence, then learns which tracks actually move you — and picks better next run. Pace-adaptive running music for iOS, built privacy-first." />
   <meta name="theme-color" content="#0E1013" />
   <link rel="canonical" href="https://dromo.fit/" />
 
   <!-- Open Graph / social -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://dromo.fit/" />
-  <meta property="og:title" content="Dromo — Your library, locked to your pace." />
-  <meta property="og:description" content="Pace-adaptive running music that locks your library to your cadence. Coming to iOS." />
+  <meta property="og:title" content="Dromo — A DJ that learns how you run." />
+  <meta property="og:description" content="Pace-adaptive running music that learns which tracks actually move you. Coming to iOS." />
   <meta property="og:image" content="https://dromo.fit/og-image.png" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Dromo — Your library, locked to your pace." />
-  <meta name="twitter:description" content="Pace-adaptive running music that locks your library to your cadence. Coming to iOS." />
+  <meta name="twitter:title" content="Dromo — A DJ that learns how you run." />
+  <meta name="twitter:description" content="Pace-adaptive running music that learns which tracks actually move you. Coming to iOS." />
   <meta name="twitter:image" content="https://dromo.fit/og-image.png" />
 
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -69,10 +69,10 @@
       <section class="hero">
         <div class="container">
           <p class="eyebrow">Pace-adaptive running music · Coming to iOS</p>
-          <h1 class="hero__title">Your library, locked<br />to your <span class="accent">pace</span>.</h1>
+          <h1 class="hero__title">A DJ that learns<br />how you <span class="accent">run</span>.</h1>
           <p class="hero__sub">
-            Dromo serves music whose tempo matches your stride — then nudges you faster
-            or slower to keep you on target.
+            Dromo matches music to your stride, then watches what actually moves you —
+            and picks better the next time you run.
           </p>
 
           <form id="waitlist-hero" class="waitlist" novalidate>
@@ -106,23 +106,29 @@
       <!-- How it works -->
       <section id="how" class="section">
         <div class="container">
-          <h2 class="section__title">Three numbers, perfectly in sync</h2>
-          <p class="section__lede">Pace in, beat out. Dromo closes the loop between your body and your playlist.</p>
+          <h2 class="section__title">It gets more yours every run</h2>
+          <p class="section__lede">Working on day one, running on your own music soon after, and tuned to you from there.</p>
           <ol class="steps">
+            <!-- BEAT 1 depends on the fallback catalog shipping with audio. Until
+                 Resources/Catalog/ is stocked (see CatalogLibrary.isStocked in the app),
+                 this describes intent, not shipped behaviour. Don't publish it as live. -->
             <li class="step">
-              <span class="step__num">STEP 01</span>
-              <h3>It reads your stride</h3>
-              <p>GPS pace and pedometer cadence tell Dromo how fast your feet turn over — live.</p>
+              <span class="step__num">INSTANT</span>
+              <h3>Start with ours</h3>
+              <p>Dromo's own mixes are tempo-tagged across the range you run, so a
+                 session works before you've connected anything.</p>
             </li>
             <li class="step">
-              <span class="step__num">STEP 02</span>
-              <h3>It matches the tempo</h3>
-              <p>Tracks from your own library whose BPM lands on your cadence.</p>
+              <span class="step__num">YOURS</span>
+              <h3>Then it's your music</h3>
+              <p>Connect Apple Music and Dromo works out your library's tempo in the
+                 background — song by song, without you tagging a thing.</p>
             </li>
             <li class="step">
-              <span class="step__num">STEP 03</span>
-              <h3>It keeps you honest</h3>
-              <p>Off target? The tempo eases up or down to pull your pace back.</p>
+              <span class="step__num">PERSONAL</span>
+              <h3>Then it's you</h3>
+              <p>It notices how your cadence responds to each track and leans on the
+                 ones that move you — privately, on your phone.</p>
             </li>
           </ol>
         </div>
@@ -146,12 +152,12 @@
             <article class="feature">
               <div class="feature__icon">🎯</div>
               <h3>Pace targets &amp; goals</h3>
-              <p>A goal pace or race time becomes a cadence to hit.</p>
+              <p>A goal pace becomes a cadence to hit — with splits called out if you want them.</p>
             </article>
             <article class="feature">
               <div class="feature__icon">📈</div>
-              <h3>Momentum that builds</h3>
-              <p>Streaks and a tempo profile that sharpens as you run.</p>
+              <h3>Learns what moves you</h3>
+              <p>After a run, see which tracks your cadence actually responded to.</p>
             </article>
             <article class="feature">
               <div class="feature__icon">⌚</div>
@@ -214,17 +220,18 @@
             <p class="eyebrow">The line we don't cross</p>
             <h2 class="section__title">Your music stays yours</h2>
             <p>
-              Dromo analyzes tempo right on your iPhone, against music that's already there. The only thing
-              that ever leaves your device is a number — a song's beats-per-minute — never a single second of audio.
+              To pace you, Dromo needs one number per song: its tempo. It asks for that by recording ID and
+              gets a number back. Your audio never leaves your phone — not a single second of it.
             </p>
             <p>
-              That discipline builds something useful: a shared map of tempo facts that makes the next run start
-              instantly, without re-analyzing the same song twice. Facts about music, not copies of it.
+              What Dromo learns about <em>you</em> never leaves at all. Which tracks move you, what you skip,
+              how you respond when you're behind pace — that stays on the device, and you can delete it in
+              one tap. Facts about music are shared; facts about you are not.
             </p>
           </div>
           <ul class="privacy__list">
-            <li><strong>On-device analysis</strong><span>Tempo is computed locally, never in the cloud.</span></li>
-            <li><strong>Numbers only</strong><span>BPM and energy leave the phone — audio never does.</span></li>
+            <li><strong>Your audio stays put</strong><span>Tempo is looked up or computed locally — audio is never uploaded.</span></li>
+            <li><strong>What it learns is yours</strong><span>Taste and response data never leave the phone. Delete it any time.</span></li>
             <li><strong>No account required to run</strong><span>Connect a service when you want; skip it when you don't.</span></li>
           </ul>
         </div>
