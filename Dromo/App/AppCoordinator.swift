@@ -126,37 +126,74 @@ final class AppCoordinator: ObservableObject {
     // MARK: - BPM enrichment (GetSongBPM)
 
     /// Progress of the one-time background BPM lookup for DRM/untagged tracks.
-    @Published private(set) var enrichmentProgress: BPMEnricher.Progress?
+    @Published private(set) var enrichmentProgress: LibraryEnrichmentPass.Progress?
+    /// What the last background pass actually achieved — which sources answered, and
+    /// what got deferred to the next pass.
+    @Published private(set) var lastEnrichmentResult: LibraryEnrichmentPass.Result?
     private var enrichmentTask: Task<Void, Never>?
 
-    /// Looks up BPM (by metadata) for tracks that have none, caching results so the
-    /// library becomes tempo-matchable. Runs once in the background; never blocks runs.
+    /// Walks the enrichment chain for tracks with no usable tempo, cheapest and most
+    /// trustworthy source first, caching every hit with its provenance. Runs in the
+    /// background, resumes across launches, and yields to the network gate — a run is
+    /// never blocked on it (ARCHITECTURE §6, Phase 2).
+    ///
+    /// Order matters and is enforced by `BPMSourceChain`, not by this wiring:
+    ///   Global Track Table (ISRC) → the platform's own tag → GetSongBPM → Spotify.
+    /// Spotify is last on purpose: audio-features is restricted for new apps and may
+    /// disappear (see memory: spotify-bpm-restriction).
     private func startEnrichment(for tracks: [Track]) {
-        // BPM sources, in priority order: Spotify Audio Features (best coverage) →
-        // GetSongBPM (fallback). Both are background metadata lookups — no user login.
-        var lookups: [BPMLookup] = []
-        if !Config.spotifyClientID.isEmpty, !Config.spotifyClientSecret.isEmpty {
-            lookups.append(SpotifyBPMResolver(clientID: Config.spotifyClientID,
-                                              clientSecret: Config.spotifyClientSecret))
-        }
+        // Captured before the closure so identity resolution doesn't hop the main actor
+        // for every track it checks.
+        let provider = self.provider
+        var sources: [BPMSourcing] = [
+            // 1. Someone already measured this recording — one cheap request, best value.
+            //    `Track` carries no ISRC, so identity is resolved lazily inside the
+            //    source: only for tracks that actually reach a lookup.
+            TrackTableBPMSource(api: HTTPTrackTableClient(baseURL: LibrarySync.baseURL),
+                                cache: GRDBTrackFactsCache(),
+                                resolveIdentity: { id in
+                                    await provider?.catalogISRC(forTrackID: id)
+                                }),
+            // 2. The tempo the platform handed us for free (MPMediaItem.beatsPerMinute).
+            ProviderTagSource(),
+        ]
         if !Config.getSongBPMKey.isEmpty {
-            lookups.append(GetSongBPMClient(apiKey: Config.getSongBPMKey))
+            sources.append(LegacyBPMSource(source: .getSongBPM,
+                                           lookup: GetSongBPMClient(apiKey: Config.getSongBPMKey)))
         }
-        guard !lookups.isEmpty else { return }   // no BPM source configured → skip silently
+        if !Config.spotifyClientID.isEmpty, !Config.spotifyClientSecret.isEmpty {
+            sources.append(LegacyBPMSource(
+                source: .spotify,
+                lookup: SpotifyBPMResolver(clientID: Config.spotifyClientID,
+                                           clientSecret: Config.spotifyClientSecret)))
+        }
 
         enrichmentTask?.cancel()
         let store = EnrichedBPMStore()
-        let enricher = BPMEnricher(lookup: ChainedBPMLookup(lookups), sink: store)
+        let pass = LibraryEnrichmentPass(
+            chain: BPMSourceChain(sources),
+            sink: store,
+            ledger: GRDBEnrichmentLedger(),
+            gate: EnrichmentGate.shared.isOpen)
+
         enrichmentTask = Task { [weak self] in
             let cached = await store.all()
+            // Only tracks with nothing usable yet. The ledger decides which of those
+            // are due — this filter is just "don't ask about what we already know".
             let items = tracks
-                .filter { $0.bpm <= 0 && cached[$0.id] == nil }   // only the unknown, uncached
-                .map { EnrichmentItem(trackID: $0.id, title: $0.title, artist: $0.artist) }
+                .filter { $0.bpm <= 0 && cached[$0.id] == nil }
+                .map { EnrichmentItem(trackID: $0.id, title: $0.title, artist: $0.artist,
+                                      providerBPM: $0.bpm) }
             guard !items.isEmpty else { return }
-            await enricher.enrich(items) { progress in
-                Task { @MainActor in self?.enrichmentProgress = progress }
+            let result = await pass.run(items) { progress in
+                Task { @MainActor in
+                    self?.enrichmentProgress = progress
+                }
             }
-            await MainActor.run { self?.enrichmentProgress = nil }
+            await MainActor.run {
+                self?.enrichmentProgress = nil
+                self?.lastEnrichmentResult = result
+            }
         }
     }
 

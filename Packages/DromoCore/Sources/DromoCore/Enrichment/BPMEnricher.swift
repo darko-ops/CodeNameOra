@@ -11,18 +11,39 @@ public protocol BPMLookup: Sendable {
 /// Where enriched BPM values are persisted (on-device cache).
 public protocol BPMSink: Sendable {
     func store(bpm: Double, trackID: String) async
+    /// Store WITH provenance, so a later pass can tell an upgrade from a downgrade.
+    /// Defaults to the untagged write, so existing sinks keep working.
+    func store(_ finding: BPMFinding, trackID: String) async
 }
 
-/// One track that needs a BPM (identity + display metadata for the lookup).
+public extension BPMSink {
+    func store(_ finding: BPMFinding, trackID: String) async {
+        await store(bpm: finding.bpm, trackID: trackID)
+    }
+}
+
+/// One track that needs a BPM: identity for the cheap sources (Track Table by ISRC,
+/// the platform's own tag) and display metadata for the ones that can only match on
+/// text. Identity fields are optional — a DRM streaming track may have neither.
 public struct EnrichmentItem: Sendable, Equatable {
     public let trackID: String
     public let title: String
     public let artist: String
-    public init(trackID: String, title: String, artist: String) {
+    /// Recording identity — what the Global Track Table is keyed by (§2).
+    public let isrc: String?
+    /// Tempo the platform already exposed (`MPMediaItem.beatsPerMinute`, 0 = none).
+    public let providerBPM: Double?
+
+    public init(trackID: String, title: String, artist: String,
+                isrc: String? = nil, providerBPM: Double? = nil) {
         self.trackID = trackID
         self.title = title
         self.artist = artist
+        self.isrc = isrc
+        self.providerBPM = (providerBPM ?? 0) > 0 ? providerBPM : nil
     }
+
+    public var identity: IdentityKey? { isrc.map { IdentityKey(isrc: $0) } }
 }
 
 /// Enriches a library's missing BPMs: one metadata lookup per track, rate-limited,

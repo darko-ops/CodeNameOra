@@ -180,6 +180,29 @@ final class DatabaseManager {
             );
             """)
         }
+
+        // Enrichment bookkeeping (Phase 2). Two additions to the BPM cache:
+        //   · provenance — which source gave us this tempo, and how much to trust it,
+        //     so a later pass can tell an upgrade from a downgrade;
+        //   · a ledger of attempts, so a background pass RESUMES instead of restarting
+        //     and a permanently-unknown track stops burning API budget.
+        migrator.registerMigration("v8_enrichment_provenance") { db in
+            // Existing rows predate attribution: GetSongBPM was the only writer.
+            try db.execute(sql: """
+            ALTER TABLE bpm_enrichment ADD COLUMN source TEXT NOT NULL DEFAULT 'getSongBPM';
+            """)
+            try db.execute(sql: """
+            ALTER TABLE bpm_enrichment ADD COLUMN confidence REAL NOT NULL DEFAULT 0.6;
+            """)
+            try db.execute(sql: """
+            CREATE TABLE enrichment_attempts (
+                track_id TEXT PRIMARY KEY,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_attempt_at REAL NOT NULL DEFAULT (strftime('%s', 'now')),
+                resolved INTEGER NOT NULL DEFAULT 0
+            );
+            """)
+        }
         return migrator
     }
 }

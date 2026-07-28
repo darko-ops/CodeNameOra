@@ -12,6 +12,15 @@ import DromoCore
 final class LibraryCoverageModel: ObservableObject {
     @Published private(set) var coverage = LibraryCoverage(total: 0, tagged: 0)
     @Published private(set) var isLoading = false
+    /// Why background tagging is idle right now (nil = running normally).
+    @Published private(set) var pausedReason: String?
+    /// Opt-in for tagging over cellular; written straight through to the gate.
+    @Published var allowsCellular: Bool = EnrichmentGate.shared.allowsCellular {
+        didSet {
+            EnrichmentGate.shared.allowsCellular = allowsCellular
+            pausedReason = EnrichmentGate.shared.pausedReason
+        }
+    }
 
     private let enriched = EnrichedBPMStore()
 
@@ -28,6 +37,7 @@ final class LibraryCoverageModel: ObservableObject {
                          providerBPM: $0.bpm > 0 ? $0.bpm : (bpmByID[$0.id] ?? 0))
         }
         coverage = LibraryCoverage.measure(entries: entries)
+        pausedReason = EnrichmentGate.shared.pausedReason
     }
 }
 
@@ -57,6 +67,22 @@ struct LibraryCoverageCard: View {
                 .font(.system(size: 12))
                 .foregroundColor(.oraTextSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let reason = model.pausedReason {
+                Text(reason)
+                    .font(.system(size: 11))
+                    .foregroundColor(.oraWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Tagging runs unprompted, so spending a data plan has to be the runner's
+            // decision, not ours.
+            Toggle(isOn: $model.allowsCellular) {
+                Text("Use cellular data")
+                    .font(.system(size: 12))
+                    .foregroundColor(.oraTextSecondary)
+            }
+            .tint(.zoneSteady)
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)

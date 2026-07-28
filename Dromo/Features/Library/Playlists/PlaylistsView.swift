@@ -147,7 +147,7 @@ struct PlaylistsView: View {
 
     // MARK: - Enrichment banner
 
-    private func enrichmentBanner(_ p: BPMEnricher.Progress) -> some View {
+    private func enrichmentBanner(_ p: LibraryEnrichmentPass.Progress) -> some View {
         HStack(spacing: Spacing.sm) {
             ProgressView().tint(.zoneSteady)
             Text("Building your tempo profile… \(p.done)/\(p.total)")

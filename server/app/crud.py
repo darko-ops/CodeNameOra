@@ -8,7 +8,7 @@ low-confidence readings is Phase 6, not here.
 """
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import TrackConfirmation, TrackFacts
@@ -141,3 +141,40 @@ async def confirm(session: AsyncSession, track_id: str, data: ConfirmIn) -> Trac
     await session.commit()
     await session.refresh(track)
     return track
+
+
+async def coverage(session: AsyncSession, *, confident_threshold: float = 0.5) -> dict:
+    """Table-wide counters for the client's coverage view and for watching the shared
+    table grow. One pass of aggregates — never a full scan of rows into memory."""
+    total, with_isrc, with_fp, confident, confirmed, mean_conf = (
+        await session.execute(
+            select(
+                func.count(TrackFacts.id),
+                func.count(TrackFacts.isrc),
+                func.count(TrackFacts.fingerprint),
+                func.sum(
+                    case((TrackFacts.bpm_confidence >= confident_threshold, 1), else_=0)
+                ),
+                func.sum(case((TrackFacts.confirmation_count > 0, 1), else_=0)),
+                func.avg(TrackFacts.bpm_confidence),
+            )
+        )
+    ).one()
+
+    versions = (
+        await session.execute(
+            select(TrackFacts.analysis_version, func.count(TrackFacts.id)).group_by(
+                TrackFacts.analysis_version
+            )
+        )
+    ).all()
+
+    return {
+        "tracks": total or 0,
+        "with_isrc": with_isrc or 0,
+        "with_fingerprint": with_fp or 0,
+        "confident": int(confident or 0),
+        "confirmed": int(confirmed or 0),
+        "by_analysis_version": {version: count for version, count in versions},
+        "mean_confidence": round(mean_conf, 4) if mean_conf is not None else None,
+    }
