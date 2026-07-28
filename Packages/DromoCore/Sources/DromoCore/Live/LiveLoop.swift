@@ -55,7 +55,7 @@ public actor LiveLoop {
     private var preferences: [String: Double]
     /// Learned behavioral effectiveness, per mode: [mode: [trackID: 0…1]]. Selection
     /// uses the sub-map for the mode in effect at pick time.
-    private var effectivenessByMode: [PaceMode: [String: Double]] = [:]
+    private var effectivenessByMode: [PaceMode: [String: LearnedEffectiveness]] = [:]
     /// Natural-fatigue coefficient (1.0 fresh → ~0.2 fatigued). Softens the engine's
     /// push so a tiring runner gets gentler nudges, not harder ones.
     private var fatigue: Double = 1.0
@@ -151,8 +151,13 @@ public actor LiveLoop {
 
     /// Update the learned behavioral effectiveness (per mode) mid-session, so what the
     /// runner's response taught us steers the very next selection.
-    public func updateEffectiveness(_ byMode: [PaceMode: [String: Double]]) {
+    public func updateEffectiveness(_ byMode: [PaceMode: [String: LearnedEffectiveness]]) {
         effectivenessByMode = byMode
+    }
+
+    /// Convenience for callers holding bare values — treats each as fully earned.
+    public func updateEffectiveness(_ byMode: [PaceMode: [String: Double]]) {
+        effectivenessByMode = byMode.mapValues { $0.mapValues { LearnedEffectiveness.trusted($0) } }
     }
 
     /// Update the natural-fatigue coefficient mid-session (1.0 fresh → ~0.2 fatigued),

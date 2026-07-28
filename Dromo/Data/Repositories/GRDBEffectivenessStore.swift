@@ -40,11 +40,27 @@ struct GRDBEffectivenessStore: EffectivenessStoring {
         }) ?? [:]
     }
 
+    /// Estimates WITH their observation counts. The count is what lets the engine
+    /// weight a signal by the evidence behind it — one play nudges the ranking, several
+    /// can flip it — so it must come from the stored `samples`, never be assumed.
+    func learned(for mode: PaceMode) async -> [String: LearnedEffectiveness] {
+        (try? await dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT track_id, effectiveness, samples FROM track_effectiveness WHERE mode = ?",
+                arguments: [mode.rawValue])
+                .reduce(into: [String: LearnedEffectiveness]()) { out, row in
+                    out[row["track_id"]] = LearnedEffectiveness(
+                        value: row["effectiveness"], observations: row["samples"])
+                }
+        }) ?? [:]
+    }
+
     /// All modes at once — used to prime the live loop at session start.
-    func allByMode() async -> [PaceMode: [String: Double]] {
-        var result: [PaceMode: [String: Double]] = [:]
+    func allByMode() async -> [PaceMode: [String: LearnedEffectiveness]] {
+        var result: [PaceMode: [String: LearnedEffectiveness]] = [:]
         for mode in PaceMode.allCases {
-            result[mode] = await effectiveness(for: mode)
+            result[mode] = await learned(for: mode)
         }
         return result
     }

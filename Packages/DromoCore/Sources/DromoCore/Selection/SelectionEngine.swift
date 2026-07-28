@@ -52,7 +52,7 @@ public struct SelectionEngine {
         currentCadence: Double,
         candidates: [TrackFacts],
         preferences: [String: Double] = [:],
-        effectiveness: [String: Double] = [:],
+        effectiveness: [String: LearnedEffectiveness] = [:],
         fatigue: Double = 1.0,
         origins: [String: TrackOrigin] = [:]
     ) -> Decision? {
@@ -69,7 +69,7 @@ public struct SelectionEngine {
         for f in candidates {
             let s = score(f, desired: desired, target: targetCadence, gap: gap,
                           preference: preferences[f.id] ?? 0,
-                          effectiveness: effectiveness[f.id] ?? 0.5,
+                          learned: effectiveness[f.id] ?? .unknown,
                           fatigue: fatigue,
                           origin: origins[f.id] ?? .library)
             scored.append(Scored(facts: f, score: s))
@@ -84,6 +84,24 @@ public struct SelectionEngine {
         return Decision(trackID: best.facts.id,
                         effectiveBPM: effectiveBPM(best.facts, targetCadence: targetCadence),
                         nudge: nudge)
+    }
+
+    /// Convenience for callers holding bare 0…1 values with no history to model —
+    /// treats each as fully earned. Live code should pass `LearnedEffectiveness` so the
+    /// cold-start ramp applies.
+    public mutating func selectNext(
+        targetCadence: Double,
+        currentCadence: Double,
+        candidates: [TrackFacts],
+        preferences: [String: Double] = [:],
+        effectiveness: [String: Double],
+        fatigue: Double = 1.0,
+        origins: [String: TrackOrigin] = [:]
+    ) -> Decision? {
+        selectNext(targetCadence: targetCadence, currentCadence: currentCadence,
+                   candidates: candidates, preferences: preferences,
+                   effectiveness: effectiveness.mapValues { LearnedEffectiveness.trusted($0) },
+                   fatigue: fatigue, origins: origins)
     }
 
     // MARK: - Octave resolution (the 85-vs-170 problem)
@@ -152,7 +170,7 @@ public struct SelectionEngine {
     /// confidence multiplier (it's ground truth, not a metadata guess) and can flip the
     /// ranking once earned, which is the point: behavior teaches the engine.
     private func score(_ f: TrackFacts, desired: Double, target: Double, gap: Double,
-                       preference: Double, effectiveness: Double, fatigue: Double,
+                       preference: Double, learned: LearnedEffectiveness, fatigue: Double,
                        origin: TrackOrigin) -> Double {
         let mode = PaceMode(gap: gap, onPaceTolerance: config.onPaceTolerance)
         let w = weights(mode)
@@ -162,16 +180,31 @@ public struct SelectionEngine {
         let energy = energySubscore(f.energy ?? 0.5, mode, fatigue: fatigue)
         let beat = f.beatStrength ?? 0.5
 
-        // Merit: the mode-weighted blend + learned taste, discounted if low-confidence.
+        // THE GUARDRAIL: learned signals only apply inside the tempo-suitable band, so
+        // learning re-ranks what fits and can never promote what doesn't. Outside it,
+        // a track is judged on the objective blend alone.
+        let suitable = abs(eff - desired) <= config.learningBandBPM
+
+        // Merit: the mode-weighted blend + stated taste, discounted if low-confidence.
         var merit = w.tempo * tempoFit + w.energy * energy + w.beat * beat
-        merit += config.preferenceWeight * preference
+        if suitable { merit += config.preferenceWeight * preference }
         if f.bpmConfidence < config.confidenceThreshold { merit *= config.lowConfidencePenalty }
 
-        // Behavioral effectiveness (±) and recency penalty sit OUTSIDE that discount.
-        let behavior = config.effectivenessWeight * (effectiveness - 0.5) * 2
+        // Behavioral effectiveness sits OUTSIDE that discount (it's ground truth, not a
+        // metadata guess), scaled by how much evidence stands behind it: one play barely
+        // moves the ranking, several plays can flip it.
+        var behavior = 0.0
+        var exploration = 0.0
+        if suitable {
+            let trust = learned.trust(minObservations: config.minObservationsToTrust)
+            behavior = config.effectivenessWeight * (learned.value - 0.5) * 2 * trust
+            // Nothing measured yet ⇒ a nudge to go find out, so the learner keeps
+            // getting data instead of re-playing what it already knows.
+            if learned.isUnplayed { exploration = config.explorationBonus }
+        }
         // Equal fit ⇒ the runner's own music wins; merit still beats provenance.
         let ownership = origin == .catalog ? config.catalogPenalty : 0
-        return merit + behavior - repeatPenalty(f.id) - ownership
+        return merit + behavior + exploration - repeatPenalty(f.id) - ownership
     }
 
     /// Schmitt trigger on the cadence gap → nudge, so small wobble near a threshold

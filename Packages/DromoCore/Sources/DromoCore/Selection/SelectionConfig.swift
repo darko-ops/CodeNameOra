@@ -56,6 +56,26 @@ public struct SelectionConfig: Sendable, Equatable {
     /// ±this around neutral, so a proven track can override a better tempo match.
     public var effectivenessWeight: Double = 0.5
 
+    // --- Learning: cold start and its guardrail (Phase 5) ---
+
+    /// Plays (per mode) before a learned effectiveness is acted on at full weight.
+    /// Below this the signal is scaled down, so one lucky or unlucky run can't rewrite
+    /// the ranking — the difference between a DJ who's paying attention and one who
+    /// overreacts.
+    public var minObservationsToTrust: Int = 3
+
+    /// Bonus for a track never played in this mode. Without it the engine would keep
+    /// replaying what it has already measured and never gather evidence about anything
+    /// else — the learner would starve itself. Small: curiosity, not randomness.
+    public var explorationBonus: Double = 0.08
+
+    /// THE GUARDRAIL. Learned signals — effectiveness and stated taste — only apply to
+    /// candidates within this many BPM of what the moment calls for. Learning re-ranks
+    /// the tempo-suitable set; it can never pull in a track that doesn't belong at this
+    /// pace, however much the runner likes it. A beloved 90 BPM song must not surface
+    /// during a 170 spm push.
+    public var learningBandBPM: Double = 15
+
     /// Tracks below this BPM confidence are a last resort (merit multiplied down).
     public var confidenceThreshold: Double = 0.5
     public var lowConfidencePenalty: Double = 0.5
