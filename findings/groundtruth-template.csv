@@ -1,0 +1,17 @@
+# Phase-7 ground truth. Task 7.1 in findings/bpm-accuracy.md.
+#
+# path        — audio file, absolute or relative to THIS csv. Must be DRM-free
+#               (purchased/ripped/own recordings) — Apple Music streams cannot decode.
+# true_bpm    — from a published source or hand-counted over a sustained section.
+#               NEVER from Dromo's engine: that would measure the engine against itself.
+# difficulty  — steady | live-drums | tempo-change | octave | sparse | extreme
+#
+# Required: 25-40 tracks, >=5 `octave` (the half/double trap the verdict turns on),
+# >=2 each of live-drums / tempo-change / sparse, >=1 extreme (~70 and ~180+).
+# Check it before running:  python3 scripts/validate_groundtruth.py <this file>
+path,true_bpm,difficulty
+tracks/example_dance.m4a,128,steady
+tracks/example_rock.m4a,142,live-drums
+tracks/example_dnb.m4a,174,octave
+tracks/example_acoustic.m4a,96,sparse
+tracks/example_ballad.m4a,72,extreme
