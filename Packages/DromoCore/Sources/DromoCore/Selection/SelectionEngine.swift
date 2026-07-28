@@ -44,13 +44,17 @@ public struct SelectionEngine {
 
     /// Pick the next track for the current state and advance runtime state. Returns
     /// nil only when the candidate pool is empty.
+    ///
+    /// `origins` marks which candidates came from Dromo's fallback catalog; unlisted
+    /// ids count as the runner's own. It applies only as an equal-fit tiebreak.
     public mutating func selectNext(
         targetCadence: Double,
         currentCadence: Double,
         candidates: [TrackFacts],
         preferences: [String: Double] = [:],
         effectiveness: [String: Double] = [:],
-        fatigue: Double = 1.0
+        fatigue: Double = 1.0,
+        origins: [String: TrackOrigin] = [:]
     ) -> Decision? {
         guard !candidates.isEmpty else { return nil }
 
@@ -66,7 +70,8 @@ public struct SelectionEngine {
             let s = score(f, desired: desired, target: targetCadence, gap: gap,
                           preference: preferences[f.id] ?? 0,
                           effectiveness: effectiveness[f.id] ?? 0.5,
-                          fatigue: fatigue)
+                          fatigue: fatigue,
+                          origin: origins[f.id] ?? .library)
             scored.append(Scored(facts: f, score: s))
         }
         scored.sort { $0.score != $1.score ? $0.score > $1.score : $0.facts.id < $1.facts.id }
@@ -147,7 +152,8 @@ public struct SelectionEngine {
     /// confidence multiplier (it's ground truth, not a metadata guess) and can flip the
     /// ranking once earned, which is the point: behavior teaches the engine.
     private func score(_ f: TrackFacts, desired: Double, target: Double, gap: Double,
-                       preference: Double, effectiveness: Double, fatigue: Double) -> Double {
+                       preference: Double, effectiveness: Double, fatigue: Double,
+                       origin: TrackOrigin) -> Double {
         let mode = PaceMode(gap: gap, onPaceTolerance: config.onPaceTolerance)
         let w = weights(mode)
 
@@ -163,7 +169,9 @@ public struct SelectionEngine {
 
         // Behavioral effectiveness (±) and recency penalty sit OUTSIDE that discount.
         let behavior = config.effectivenessWeight * (effectiveness - 0.5) * 2
-        return merit + behavior - repeatPenalty(f.id)
+        // Equal fit ⇒ the runner's own music wins; merit still beats provenance.
+        let ownership = origin == .catalog ? config.catalogPenalty : 0
+        return merit + behavior - repeatPenalty(f.id) - ownership
     }
 
     /// Schmitt trigger on the cadence gap → nudge, so small wobble near a threshold

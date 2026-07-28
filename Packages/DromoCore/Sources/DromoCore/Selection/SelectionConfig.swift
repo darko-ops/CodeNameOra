@@ -60,6 +60,12 @@ public struct SelectionConfig: Sendable, Equatable {
     public var confidenceThreshold: Double = 0.5
     public var lowConfidencePenalty: Double = 0.5
 
+    /// Tiebreak against Dromo's own fallback catalog. Deliberately TINY: it decides
+    /// only when two candidates are otherwise equal, so the runner's own music wins a
+    /// coin flip while a genuinely better-fitting catalog track still wins on merit.
+    /// The catalog is the day-one guarantee, not a competitor to the user's library.
+    public var catalogPenalty: Double = 0.05
+
     /// Soft repeat penalty (NOT a hard exclusion): the most-recent pick is docked this
     /// much, decaying toward 0 across the window — so variety is the default, but a
     /// clearly-superior track can still win again. Behavior, not a gate.

@@ -49,6 +49,8 @@ public actor LiveLoop {
     private var engine: SelectionEngine
     private let playback: any PlaybackControlling
     private var candidates: [TrackFacts]
+    /// Which candidates are Dromo's own catalog (equal-fit tiebreak only).
+    private var origins: [String: TrackOrigin] = [:]
     private var smoother: CadenceSmoother
     private var preferences: [String: Double]
     /// Learned behavioral effectiveness, per mode: [mode: [trackID: 0…1]]. Selection
@@ -70,6 +72,7 @@ public actor LiveLoop {
         engine: SelectionEngine = .init(),
         playback: any PlaybackControlling,
         candidates: [TrackFacts],
+        origins: [String: TrackOrigin] = [:],
         targetPaceSecPerKm: Double,
         cadenceModel: CadenceModel = .init(),
         smoother: CadenceSmoother = .init(),
@@ -80,6 +83,7 @@ public actor LiveLoop {
         self.engine = engine
         self.playback = playback
         self.candidates = candidates
+        self.origins = origins
         self.smoother = smoother
         self.preferences = preferences
         self.config = config
@@ -129,6 +133,16 @@ public actor LiveLoop {
              + "(\(newCandidates.filter { $0.bpm > 0 }.count) with known BPM)")
     }
 
+    /// Replace the pool AND its provenance, so "prefer the runner's own music at
+    /// equal fit" survives the background upgrade.
+    public func updateCandidates(_ pool: SessionPool) {
+        candidates = pool.facts
+        origins = pool.origins
+        log?("pool updated → \(pool.count) tracks "
+             + "(\(pool.libraryTracks.count) yours, \(pool.catalogTracks.count) catalog, "
+             + "\(pool.facts.filter { $0.bpm > 0 }.count) with known BPM)")
+    }
+
     /// Update the per-user taste weights mid-session, so likes/skips (Phase 6 A2)
     /// steer subsequent selections live.
     public func updatePreferences(_ newPreferences: [String: Double]) {
@@ -166,7 +180,8 @@ public actor LiveLoop {
                 candidates: candidates,
                 preferences: preferences,
                 effectiveness: effectivenessByMode[mode] ?? [:],
-                fatigue: fatigue
+                fatigue: fatigue,
+                origins: origins
             ) else {
                 state.nowPlayingTrackID = nil
                 log?("⚠️ no playable track — gave up after skipping \(skipped) "
