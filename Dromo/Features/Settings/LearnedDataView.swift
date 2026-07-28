@@ -44,6 +44,7 @@ final class LearnedDataModel: ObservableObject {
 struct LearnedDataView: View {
     @StateObject private var model = LearnedDataModel()
     @State private var confirming = false
+    @State private var coachEnabled = CoachVoice.isEnabled
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -95,12 +96,38 @@ struct LearnedDataView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            coachSection
+
             Spacer()
         }
         .padding(Spacing.screen)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.oraBackground.ignoresSafeArea())
         .task { await model.load() }
+    }
+
+    /// Phase 7: coaching is additive and opt-in. Named for what it does to the run,
+    /// not for the feature, so the trade-off is obvious before turning it on.
+    private var coachSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Toggle(isOn: Binding(get: { coachEnabled },
+                                 set: { coachEnabled = $0; CoachVoice.isEnabled = $0 })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Spoken coaching")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.oraTextPrimary)
+                    Text("Splits, pace checks and halfway guidance, spoken over your "
+                         + "music. The music ducks — it never stops.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.oraTextSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(.zoneSteady)
+        }
+        .padding(Spacing.md)
+        .background(Color.oraSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private func label(for mode: PaceMode) -> String {

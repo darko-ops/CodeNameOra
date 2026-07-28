@@ -66,6 +66,15 @@ final class LiveSessionViewModel: ObservableObject {
     private var paceAlerts = PaceAlertMonitor()
     private let alertPlayer = PaceAlertPlayer()
 
+    /// Optional coach layer (Phase 7): splits, goal-pace checks and negative-split
+    /// guidance, spoken over ducked music. Off unless the runner turned it on — the
+    /// DJ is the product and works with nothing enabled here.
+    private var coach = CoachCueEngine(isEnabled: CoachVoice.isEnabled)
+    private let coachVoice = CoachVoice()
+    /// The track id the loop was playing at the previous sample — a change means a
+    /// transition is in flight, and the coach must not speak across it.
+    private var lastCoachTrackID: String?
+
     /// Behavioral learning loop: attribute the runner's pace response to the playing
     /// track, learn per-(track, mode) effectiveness, and feed it back into selection.
     private var attributor = PaceResponseAttributor()
@@ -157,6 +166,7 @@ final class LiveSessionViewModel: ObservableObject {
         isPaused.toggle()
         if isPaused {
             playback.pause()
+            coachVoice.stop()        // no coaching into a paused run
             paceAlert = nil          // don't leave an alarm hanging while stopped
         } else {
             playback.resume()
@@ -233,6 +243,17 @@ final class LiveSessionViewModel: ObservableObject {
         clock?.invalidate()
         clock = nil
         paceAlert = nil
+        // Close out with the run's summary line, then fall silent — a coach that keeps
+        // talking to someone who has stopped is just noise.
+        if let cue = coach.flush(CoachCueEngine.Sample(
+            distanceMeters: recorder?.distanceMeters ?? 0,
+            elapsedSeconds: elapsedSeconds,
+            paceSecPerKm: state.currentPaceSecPerKm,
+            targetPaceSecPerKm: state.targetPaceSecPerKm)) {
+            coachVoice.speak(cue)
+        } else {
+            coachVoice.stop()
+        }
         // Close out the final track so its response is learned too.
         if let response = attributor.flush() {
             runResponses.append(response)
@@ -342,6 +363,21 @@ final class LiveSessionViewModel: ObservableObject {
                 self.recorder?.sample(paceSecPerKm: s.currentPaceSecPerKm,
                                       bpm: s.nowPlayingBPM ?? 0,
                                       trackID: s.nowPlayingTrackID, at: Date())
+
+                // Coach layer. `isTransitioning` is true on the sample where the track
+                // changed, so a cue can never land on a crossfade; the engine holds it
+                // for the next second instead of dropping it.
+                let changed = s.nowPlayingTrackID != self.lastCoachTrackID
+                self.lastCoachTrackID = s.nowPlayingTrackID
+                if let cue = self.coach.update(CoachCueEngine.Sample(
+                    distanceMeters: self.recorder?.distanceMeters ?? 0,
+                    elapsedSeconds: self.elapsedSeconds,
+                    paceSecPerKm: s.currentPaceSecPerKm,
+                    targetPaceSecPerKm: s.targetPaceSecPerKm,
+                    goalMeters: self.targetDistanceMeters,
+                    isTransitioning: changed)) {
+                    self.coachVoice.speak(cue)
+                }
 
                 // Natural-fatigue context: estimate from the cadence stream and feed the
                 // coefficient to the loop, so the next selection softens its push when
