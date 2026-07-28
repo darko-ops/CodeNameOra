@@ -38,7 +38,8 @@ struct PlaylistDetailView: View {
             LiveHUDView(vm: LiveSessionViewModel(
                 tracks: playlist.tracks,
                 targetPaceSecPerKm: targetPaceSecPerKm,
-                provider: coordinator.musicProvider))
+                provider: coordinator.musicProvider,
+                aliases: coordinator.recordingAliases))
         }
     }
 

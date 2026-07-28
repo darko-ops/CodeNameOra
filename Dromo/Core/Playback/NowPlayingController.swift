@@ -40,7 +40,9 @@ final class NowPlayingController: ObservableObject {
     init() {
         if let raw = UserDefaults.standard.string(forKey: orderKey),
            let saved = QueueOrder(rawValue: raw) { queueOrder = saved }
-        Task { preferences = await preferenceStore.weights() }
+        // Expanded through the current alias map: a like recorded through one app's
+        // copy of a song weighs its duplicates in other apps too.
+        Task { preferences = RecordingAliasesHolder.current.expanded(await preferenceStore.weights()) }
         player.beginGeneratingPlaybackNotifications()
         let nc = NotificationCenter.default
         nc.addObserver(self, selector: #selector(itemChanged),
@@ -84,7 +86,9 @@ final class NowPlayingController: ObservableObject {
         isExpanded = true
         startTimer()
         updateNowPlayingInfo()
-        Task { preferences = await preferenceStore.weights() }   // refresh taste for next time
+        Task {   // refresh taste for next time, expanded across duplicate copies
+            preferences = RecordingAliasesHolder.current.expanded(await preferenceStore.weights())
+        }
     }
 
     func togglePlayPause() {

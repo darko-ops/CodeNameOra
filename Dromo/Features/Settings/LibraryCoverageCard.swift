@@ -24,12 +24,14 @@ final class LibraryCoverageModel: ObservableObject {
 
     private let enriched = EnrichedBPMStore()
 
-    /// `library` is the coordinator's fetched provider library — the same list the
-    /// session pool is built from, so this card and the run can't disagree.
-    func load(library: [Track]) async {
+    /// `library` is the coordinator's unified library — the same list the session
+    /// pool is built from, so this card and the run can't disagree. The cache is
+    /// expanded through the alias map so a BPM stored under the recording id counts
+    /// for whichever app's copy is in the library.
+    func load(library: [Track], aliases: RecordingAliases = RecordingAliases()) async {
         isLoading = true
         defer { isLoading = false }
-        let bpmByID = await enriched.all()
+        let bpmByID = aliases.expanded(await enriched.all())
         // A track counts as covered when EITHER the provider gave us a tempo or
         // enrichment found one — the same test the pool builder applies.
         let entries = library.map {
@@ -43,6 +45,7 @@ final class LibraryCoverageModel: ObservableObject {
 
 struct LibraryCoverageCard: View {
     let library: [Track]
+    var aliases = RecordingAliases()
     @StateObject private var model = LibraryCoverageModel()
 
     var body: some View {
@@ -88,7 +91,7 @@ struct LibraryCoverageCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.oraSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .task(id: library.count) { await model.load(library: library) }
+        .task(id: library.count) { await model.load(library: library, aliases: aliases) }
     }
 
     /// Fills toward "your library carries the run" rather than toward 100%: hitting

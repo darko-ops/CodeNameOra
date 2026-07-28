@@ -61,6 +61,10 @@ final class AppCoordinator: ObservableObject {
     /// recording (`LibraryAggregator`), with the demo catalog as the fallback when
     /// connected sources yield nothing usable.
     @Published private(set) var library: [Track] = []
+    /// Track id → recording id over EVERY connected source (enabled or not), so what
+    /// the app learns through one copy of a song applies to its duplicates in other
+    /// apps — and survives sources being toggled in and out.
+    @Published private(set) var recordingAliases = RecordingAliases()
     /// Set when tempo couldn't be sourced (Spotify restricted, or no BPM tags) —
     /// shown to the user so an empty/thin library is explained, not silent.
     @Published private(set) var bpmNote: String?
@@ -152,6 +156,10 @@ final class AppCoordinator: ObservableObject {
 
         library = merged
         bpmNote = notes.isEmpty ? nil : notes.joined(separator: " ")
+        // Aliases span ALL sources, not just enabled ones: learning attached to a
+        // recording must survive the copy that taught it being toggled out.
+        recordingAliases = RecordingAliases(libraries: sources.map(\.tracks))
+        RecordingAliasesHolder.current = recordingAliases
         router = enabled.isEmpty ? nil : MusicSourceRouter(sources: enabled.map {
             (kind: $0.choice.trackProvider, provider: $0.provider, tracks: $0.tracks)
         })
@@ -198,6 +206,8 @@ final class AppCoordinator: ObservableObject {
         sources = []
         router = nil
         library = []
+        recordingAliases = RecordingAliases()
+        RecordingAliasesHolder.current = recordingAliases
         bpmNote = nil
         session = nil
         showingMusicSetup = false
@@ -252,18 +262,23 @@ final class AppCoordinator: ObservableObject {
 
         enrichmentTask?.cancel()
         let store = EnrichedBPMStore()
+        // Hits are cached once per RECORDING: a BPM looked up through one app's copy
+        // serves its duplicates in every other app, with no second request.
+        let aliases = recordingAliases
         let pass = LibraryEnrichmentPass(
             chain: BPMSourceChain(sources),
-            sink: store,
+            sink: CollectiveBPMSink(base: store, aliases: aliases),
             ledger: GRDBEnrichmentLedger(),
             gate: EnrichmentGate.shared.isOpen)
 
         enrichmentTask = Task { [weak self] in
             let cached = await store.all()
             // Only tracks with nothing usable yet. The ledger decides which of those
-            // are due — this filter is just "don't ask about what we already know".
+            // are due — this filter is just "don't ask about what we already know",
+            // under the track's own id (legacy cache) or its recording's.
             let items = tracks
-                .filter { $0.bpm <= 0 && cached[$0.id] == nil }
+                .filter { $0.bpm <= 0 && cached[$0.id] == nil
+                    && cached[aliases.recordingID(for: $0.id)] == nil }
                 .map { EnrichmentItem(trackID: $0.id, title: $0.title, artist: $0.artist,
                                       providerBPM: $0.bpm) }
             guard !items.isEmpty else { return }
