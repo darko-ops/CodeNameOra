@@ -11,10 +11,21 @@ final class MusicSourceRouterTests: XCTestCase {
     private final class StubProvider: MusicProviderProtocol, @unchecked Sendable {
         let name: String
         private(set) var played: [String] = []
-        init(_ name: String) { self.name = name }
+        var library: [Track] = []
+        /// Set to fail this source's fetch, to prove one bad service can't empty the rest.
+        var fetchFails = false
+        init(_ name: String, library: [Track] = []) {
+            self.name = name
+            self.library = library
+        }
+
+        struct Failure: Error {}
 
         func requestAuthorization() async -> Bool { true }
-        func fetchLibraryTracks() async throws -> [Track] { [] }
+        func fetchLibraryTracks() async throws -> [Track] {
+            if fetchFails { throw Failure() }
+            return library
+        }
         func play(track: Track) async throws { played.append(track.id) }
     }
 
@@ -72,5 +83,56 @@ final class MusicSourceRouterTests: XCTestCase {
 
         XCTAssertEqual(spotify.played, ["s9"])
         XCTAssertTrue(apple.played.isEmpty)
+    }
+
+    // MARK: - Unified fetch
+
+    func testFetchFoldsEverySourceIntoOneDedupedLibrary() async throws {
+        // The same recording in both services, plus one unique to each.
+        let shared = { (id: String, bpm: Double) in
+            Track(id: id, title: "Shared Song", artist: "Artist", bpm: bpm,
+                  energyLevel: 0.5, durationSeconds: 200, provider: .appleMusic)
+        }
+        let apple = StubProvider("apple", library: [shared("a1", 0), track("a2", provider: .appleMusic)])
+        let spotify = StubProvider("spotify", library: [shared("s1", 168), track("s2", provider: .spotify)])
+        let router = MusicSourceRouter(sources: [
+            (kind: .appleMusic, provider: apple, tracks: []),
+            (kind: .spotify, provider: spotify, tracks: []),
+        ])
+
+        let library = try await router.fetchLibraryTracks()
+
+        XCTAssertEqual(library.count, 3, "the duplicate collapses — a runner sees one copy")
+        XCTAssertEqual(library.filter { $0.title == "Shared Song" }.count, 1)
+        XCTAssertEqual(library.first { $0.title == "Shared Song" }?.bpm, 168,
+                       "the copy that knows its tempo is the one worth keeping")
+    }
+
+    func testFetchOrderFollowsConnectionOrderNotDictionaryOrder() async throws {
+        // Dictionary iteration order is unspecified, so an order-dependent merge could
+        // otherwise differ between launches. Repeat to catch a nondeterministic result.
+        for _ in 0..<20 {
+            let apple = StubProvider("apple", library: [track("a1", provider: .appleMusic)])
+            let spotify = StubProvider("spotify", library: [track("s1", provider: .spotify)])
+            let router = MusicSourceRouter(sources: [
+                (kind: .appleMusic, provider: apple, tracks: []),
+                (kind: .spotify, provider: spotify, tracks: []),
+            ])
+            let ids = try await router.fetchLibraryTracks().map(\.id)
+            XCTAssertEqual(ids, ["a1", "s1"], "first-connected source comes first, every time")
+        }
+    }
+
+    func testOneFailingSourceDoesNotEmptyTheLibrary() async throws {
+        let apple = StubProvider("apple", library: [track("a1", provider: .appleMusic)])
+        let spotify = StubProvider("spotify", library: [track("s1", provider: .spotify)])
+        spotify.fetchFails = true
+        let router = MusicSourceRouter(sources: [
+            (kind: .appleMusic, provider: apple, tracks: []),
+            (kind: .spotify, provider: spotify, tracks: []),
+        ])
+
+        let library = try await router.fetchLibraryTracks()
+        XCTAssertEqual(library.map(\.id), ["a1"], "the healthy source still contributes")
     }
 }

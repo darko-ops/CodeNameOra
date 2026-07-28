@@ -10,6 +10,11 @@ import DromoCore
 /// a single provider and stays untouched by multi-source.
 final class MusicSourceRouter: MusicProviderProtocol {
 
+    /// Sources in CONNECTION order. Kept alongside the lookup dictionary because
+    /// merge results depend on order — `LibraryAggregator` keeps the first-connected
+    /// copy of a duplicate — and dictionary iteration order is unspecified, which
+    /// would make the unified library differ between launches.
+    private let ordered: [(kind: Track.MusicProvider, provider: MusicProviderProtocol)]
     private let providers: [Track.MusicProvider: MusicProviderProtocol]
     private let ownerByTrackID: [String: Track.MusicProvider]
 
@@ -20,6 +25,7 @@ final class MusicSourceRouter: MusicProviderProtocol {
             providers[source.kind] = source.provider
             for track in source.tracks { owners[track.id] = source.kind }
         }
+        self.ordered = sources.map { (kind: $0.kind, provider: $0.provider) }
         self.providers = providers
         self.ownerByTrackID = owners
     }
@@ -27,12 +33,18 @@ final class MusicSourceRouter: MusicProviderProtocol {
     /// Every underlying source authorized when it was connected.
     func requestAuthorization() async -> Bool { true }
 
+    /// The unified library, folded the same way `AppCoordinator` folds it: sources in
+    /// connection order, duplicates deduped by recording. Anyone calling the protocol
+    /// gets what the runner sees, not a raw concatenation with every song twice.
+    ///
+    /// A source that fails contributes nothing rather than failing the whole fetch —
+    /// one flaky service shouldn't empty a library assembled from several.
     func fetchLibraryTracks() async throws -> [Track] {
-        var all: [Track] = []
-        for provider in providers.values {
-            all += (try? await provider.fetchLibraryTracks()) ?? []
+        var perSource: [[Track]] = []
+        for source in ordered {
+            perSource.append((try? await source.provider.fetchLibraryTracks()) ?? [])
         }
-        return all
+        return LibraryAggregator.merged(perSource)
     }
 
     func play(track: Track) async throws {
@@ -58,6 +70,6 @@ final class MusicSourceRouter: MusicProviderProtocol {
         if let kind = ownerByTrackID[trackID], let provider = providers[kind] { return provider }
         if let fallback, let provider = providers[fallback] { return provider }
         // Last resort for unknown ids: with one source there is no ambiguity.
-        return providers.count == 1 ? providers.values.first : nil
+        return ordered.count == 1 ? ordered.first?.provider : nil
     }
 }
