@@ -27,14 +27,13 @@ public struct RecordingAliases: Sendable, Equatable {
     }
 
     public init(libraries: [[Track]]) {
-        var map: [String: String] = [:]
-        for library in libraries {
-            for track in library {
-                map[track.id] = Self.prefix
-                    + LibraryAggregator.dedupeKey(title: track.title, artist: track.artist)
-            }
-        }
-        recordingByTrackID = map
+        // Same grouping the aggregator dedupes by, so what the runner sees as one
+        // track and what the app learns about are never a different set of songs.
+        // Notably it splits a live cut from the studio one when their runtimes say so,
+        // which matters here: their tempos differ, and pooling would teach the engine
+        // a tempo the runner never actually ran to.
+        recordingByTrackID = LibraryAggregator.recordingIDs(libraries)
+            .mapValues { Self.prefix + $0 }
     }
 
     public var isEmpty: Bool { recordingByTrackID.isEmpty }

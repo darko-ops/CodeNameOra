@@ -21,7 +21,14 @@ final class MusicSourceRouterTests: XCTestCase {
 
         struct Failure: Error {}
 
-        func requestAuthorization() async -> Bool { true }
+        /// Set false to stand in for a permission the runner revoked in iOS Settings.
+        var isAuthorized = true
+        private(set) var authorizationAsks = 0
+
+        func requestAuthorization() async -> Bool {
+            authorizationAsks += 1
+            return isAuthorized
+        }
         func fetchLibraryTracks() async throws -> [Track] {
             if fetchFails { throw Failure() }
             return library
@@ -134,5 +141,37 @@ final class MusicSourceRouterTests: XCTestCase {
 
         let library = try await router.fetchLibraryTracks()
         XCTAssertEqual(library.map(\.id), ["a1"], "the healthy source still contributes")
+    }
+
+    // MARK: - Authorization
+
+    func testAuthorizedWhileAnySourceStillIs() async {
+        let apple = StubProvider("apple"), spotify = StubProvider("spotify")
+        apple.isAuthorized = false            // revoked in iOS Settings
+        let router = MusicSourceRouter(sources: [
+            (kind: .appleMusic, provider: apple, tracks: []),
+            (kind: .spotify, provider: spotify, tracks: []),
+        ])
+
+        let authorized = await router.requestAuthorization()
+
+        XCTAssertTrue(authorized, "one working source is enough to run")
+        XCTAssertEqual(apple.authorizationAsks, 1, "every source gets its chance to re-auth")
+        XCTAssertEqual(spotify.authorizationAsks, 1)
+    }
+
+    func testNotAuthorizedWhenEverySourceHasBeenRevoked() async {
+        // The case the old blanket `true` hid: nothing can play, and the app should
+        // learn that here rather than from a mysteriously empty library.
+        let apple = StubProvider("apple"), spotify = StubProvider("spotify")
+        apple.isAuthorized = false
+        spotify.isAuthorized = false
+        let router = MusicSourceRouter(sources: [
+            (kind: .appleMusic, provider: apple, tracks: []),
+            (kind: .spotify, provider: spotify, tracks: []),
+        ])
+
+        let authorized = await router.requestAuthorization()
+        XCTAssertFalse(authorized)
     }
 }

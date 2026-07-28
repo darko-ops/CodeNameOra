@@ -30,8 +30,19 @@ final class MusicSourceRouter: MusicProviderProtocol {
         self.ownerByTrackID = owners
     }
 
-    /// Every underlying source authorized when it was connected.
-    func requestAuthorization() async -> Bool { true }
+    /// Authorized if ANY connected source still is.
+    ///
+    /// Each source authorized when it was connected, but that can be revoked later in
+    /// iOS Settings — reporting a blanket `true` would turn a revoked permission into
+    /// a mysteriously empty library instead of a prompt. Re-asking is cheap and silent
+    /// for a source that's still authorized; it only prompts where a prompt is owed.
+    func requestAuthorization() async -> Bool {
+        var authorized = false
+        for source in ordered where await source.provider.requestAuthorization() {
+            authorized = true   // keep going: every source gets its chance to re-auth
+        }
+        return authorized
+    }
 
     /// The unified library, folded the same way `AppCoordinator` folds it: sources in
     /// connection order, duplicates deduped by recording. Anyone calling the protocol
