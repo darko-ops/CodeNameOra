@@ -51,7 +51,12 @@ final class MusicSourceRouter: MusicProviderProtocol {
 
     private func provider(for trackID: String,
                           fallback: Track.MusicProvider? = nil) -> MusicProviderProtocol? {
-        if let kind = ownerByTrackID[trackID] ?? fallback { return providers[kind] }
+        // Resolve to a CONNECTED provider, not merely to a kind: a playlist entry can
+        // name a service the runner has since toggled out of the mix, and committing
+        // to that kind would return nil and fail playback silently — even with another
+        // source perfectly able to play it.
+        if let kind = ownerByTrackID[trackID], let provider = providers[kind] { return provider }
+        if let fallback, let provider = providers[fallback] { return provider }
         // Last resort for unknown ids: with one source there is no ambiguity.
         return providers.count == 1 ? providers.values.first : nil
     }

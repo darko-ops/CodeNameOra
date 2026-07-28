@@ -92,15 +92,20 @@ struct MusicIntegrationsView: View {
             }
 
             // The built-in mixes are the day-one guarantee, not a toggle: they fill
-            // whatever cadence the enabled libraries can't reach.
+            // whatever cadence the enabled libraries can't reach — but ONLY once the
+            // catalog ships with audio. Claiming coverage this build can't play would
+            // send a runner into a session with nothing to hear.
+            let stocked = CatalogLibrary.shared.isStocked
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "waveform")
-                    .foregroundColor(.zoneSteady)
+                    .foregroundColor(stocked ? .zoneSteady : .oraTextMuted)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Dromo Mixes")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.oraTextPrimary)
-                    Text("Built in — covers any pace your libraries can't")
+                        .foregroundColor(stocked ? .oraTextPrimary : .oraTextSecondary)
+                    Text(stocked
+                         ? "Built in — covers any pace your libraries can't"
+                         : "Not in this build yet — your connected libraries carry every run")
                         .font(.system(size: 12))
                         .foregroundColor(.oraTextMuted)
                 }
