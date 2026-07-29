@@ -66,6 +66,15 @@ html.no-intro .page { animation: none; }
   letter-spacing: 0.04em;
   color: var(--text);
 }
+.wordmark__mark {
+  display: inline-block;
+  width: 1.72em;               /* mark is 1.72:1 */
+  height: 1em;
+  margin-right: 0.5em;
+  background: currentColor;    /* black artwork used as a mask, so it inherits --text */
+  -webkit-mask: url("logo-wave.png") center / contain no-repeat;
+  mask: url("logo-wave.png") center / contain no-repeat;
+}
 .wordmark__o { position: relative; display: inline-block; }
 .wordmark__o::after {
   content: "";
