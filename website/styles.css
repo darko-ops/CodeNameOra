@@ -75,12 +75,18 @@ html.no-intro .page { animation: none; }
   -webkit-mask: url("logo-wave.png") center / contain no-repeat;
   mask: url("logo-wave.png") center / contain no-repeat;
 }
-.wordmark__o { position: relative; display: inline-block; }
+/* line-height is pinned so 50% means the same thing here as in .intro__o —
+   otherwise the box centre, and with it the slash, drifts with the inherited
+   line-height. It doesn't change the wordmark's own height or position. */
+.wordmark__o { position: relative; display: inline-block; line-height: 1; }
 .wordmark__o::after {
   content: "";
   position: absolute;
-  top: 50%;
-  left: 50%;
+  /* 50% is the span's box centre, not the O's ink centre: the box carries the
+     0.04em trailing letter-space, and its vertical middle sits above the glyph.
+     Offsets measured off the rasterised O, in em, so they hold at any size. */
+  top: calc(50% + 0.018em);
+  left: calc(50% - 0.02em);
   width: 0.88em;
   height: 2px;
   background: #fff;
@@ -427,12 +433,14 @@ html.no-intro .intro { display: none; }
 }
 .intro__dr { animation: introDR 1.2s cubic-bezier(0.7, 0, 0.25, 1) 1.7s forwards; }
 .intro__mo { animation: introMO 1.2s cubic-bezier(0.7, 0, 0.25, 1) 1.7s forwards; }
-.intro__o { position: relative; display: inline-block; }
+.intro__o { position: relative; display: inline-block; line-height: 1; }
 .intro__o::after {
   content: "";
   position: absolute;
-  top: 50%;
-  left: 50%;
+  /* same correction as .wordmark__o::after; the horizontal half is the inverse
+     of this block's own -0.02em letter-spacing */
+  top: calc(50% + 0.018em);
+  left: calc(50% + 0.01em);
   width: 0.86em;
   height: 5px;
   border-radius: 3px;
