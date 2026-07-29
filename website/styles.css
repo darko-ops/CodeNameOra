@@ -66,12 +66,14 @@ html.no-intro .page { animation: none; }
   letter-spacing: 0.04em;
   color: var(--text);
 }
-/* The mark is the same Ø as the one inside the word, set larger — it also
-   carries .wordmark__o, which supplies the slash. Margins are in its own em,
-   so 0.34em here is the 0.5em gap measured against the wordmark text. */
 .wordmark__mark {
-  font-size: 1.5em;
-  margin-right: 0.34em;
+  display: inline-block;
+  width: 1.72em;               /* mark is 1.72:1 */
+  height: 1em;
+  margin-right: 0.5em;
+  background: currentColor;    /* black artwork used as a mask, so it inherits --text */
+  -webkit-mask: url("logo-wave.png") center / contain no-repeat;
+  mask: url("logo-wave.png") center / contain no-repeat;
 }
 /* line-height is pinned so 50% means the same thing here as in .intro__o —
    otherwise the box centre, and with it the slash, drifts with the inherited
