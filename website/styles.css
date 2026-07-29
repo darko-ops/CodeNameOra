@@ -407,7 +407,7 @@ html.no-intro .page { animation: none; }
 html.no-intro .intro { display: none; }
 /* Same masked artwork as the nav mark, so it takes --text and stays crisp. */
 .intro__mark {
-  width: min(340px, 46vw);
+  width: min(136px, 18.4vw);   /* 40% of the original 340px / 46vw */
   aspect-ratio: 1.72;          /* the mark's own proportions */
   background: currentColor;
   color: var(--text);
@@ -478,7 +478,7 @@ html.no-intro .intro { display: none; }
   .cta h2 { font-size: 1.9rem; }
 
   .footer__inner { flex-direction: column; gap: 12px; text-align: center; }
-  /* .intro__mark sizes off min(340px, 46vw), so it needs no override here. */
+  /* .intro__mark sizes off min(136px, 18.4vw), so it needs no override here. */
 }
 
 /* ---- Reduced motion: no intro, no looping motion ---- */
