@@ -393,7 +393,7 @@ html.no-intro .page { animation: none; }
 .footer .wordmark { font-size: 1.05rem; }
 .footer__legal { color: var(--text-3); font-size: 0.88rem; margin: 0; }
 
-/* ---- DRØMO unlock intro overlay ---- */
+/* ---- Wave mark intro overlay ---- */
 .intro {
   position: fixed;
   inset: 0;
@@ -405,40 +405,24 @@ html.no-intro .page { animation: none; }
   animation: introFade 0.9s ease 2.9s forwards;
 }
 html.no-intro .intro { display: none; }
-.intro__word {
-  display: inline-flex;
-  align-items: center;
-  font-weight: 700;
-  font-size: 6rem;
-  letter-spacing: -0.02em;
+/* Same masked artwork as the nav mark, so it takes --text and stays crisp. */
+.intro__mark {
+  width: min(340px, 46vw);
+  aspect-ratio: 1.72;          /* the mark's own proportions */
+  background: currentColor;
   color: var(--text);
-  line-height: 1;
-}
-.intro__dr { animation: introDR 1.2s cubic-bezier(0.7, 0, 0.25, 1) 1.7s forwards; }
-.intro__mo { animation: introMO 1.2s cubic-bezier(0.7, 0, 0.25, 1) 1.7s forwards; }
-.intro__o { position: relative; display: inline-block; line-height: 1; }
-.intro__o::after {
-  content: "";
-  position: absolute;
-  /* 50% is the span's box centre, not the O's ink centre: the box carries the
-     trailing letter-space (-0.02em here, so the correction is its inverse), and
-     its vertical middle sits above the glyph. Offsets measured off the
-     rasterised O, in em, and line-height is pinned above so 50% stays put. */
-  top: calc(50% + 0.018em);
-  left: calc(50% + 0.01em);
-  width: 0.86em;
-  height: 5px;
-  border-radius: 3px;
-  background: #fff;
-  transform: translate(-50%, -50%) rotate(-45deg);
-  animation: introSpin 2.6s cubic-bezier(0.5, 0, 0.25, 1) 0.2s forwards;
+  -webkit-mask: url("logo-wave.png") center / contain no-repeat;
+  mask: url("logo-wave.png") center / contain no-repeat;
+  /* Ends at 2.9s, where the sheet's own fade and the page reveal pick up. */
+  animation: introMark 2.7s ease 0.2s both;
 }
 
-@keyframes introSpin { from { transform: translate(-50%, -50%) rotate(-45deg); } to { transform: translate(-50%, -50%) rotate(675deg); } }
-@keyframes introDR { to { transform: translateX(-820px); opacity: 0; } }
-@keyframes introMO { to { transform: translateX(820px); opacity: 0; } }
-@keyframes introDRm { to { transform: translateX(-320px); opacity: 0; } }
-@keyframes introMOm { to { transform: translateX(320px); opacity: 0; } }
+@keyframes introMark {
+  0%   { opacity: 0; transform: scale(0.94); }
+  22%  { opacity: 1; transform: scale(1); }
+  60%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.03); }
+}
 @keyframes introFade { to { opacity: 0; visibility: hidden; } }
 @keyframes introReveal {
   from { opacity: 0; filter: blur(12px); transform: scale(1.03); }
@@ -494,11 +478,7 @@ html.no-intro .intro { display: none; }
   .cta h2 { font-size: 1.9rem; }
 
   .footer__inner { flex-direction: column; gap: 12px; text-align: center; }
-
-  .intro__word { font-size: 3.2rem; }
-  .intro__o::after { height: 4px; }
-  .intro__dr { animation-name: introDRm; }
-  .intro__mo { animation-name: introMOm; }
+  /* .intro__mark sizes off min(340px, 46vw), so it needs no override here. */
 }
 
 /* ---- Reduced motion: no intro, no looping motion ---- */
