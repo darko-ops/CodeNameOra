@@ -152,6 +152,10 @@ html.no-intro .page { animation: none; }
   margin: 0 auto 48px;
 }
 .accent { color: var(--accent); }
+/* Rotating hero verb. Crossfade only — the line re-centres as the word's width
+   changes, which is why the swap happens while it's at zero opacity. */
+.hero__verb { transition: opacity 0.3s ease; }
+.hero__verb.is-swapping { opacity: 0; }
 
 /* ---- Hero ---- */
 .hero { padding: 84px 0 72px; text-align: center; }

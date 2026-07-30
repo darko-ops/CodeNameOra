@@ -18,6 +18,23 @@
     }, 1400);
   }
 
+  // ---- Rotating hero verb ----
+  // Held at the markup's "train" under reduced motion, same as the cadence readout.
+  var verb = document.getElementById("hero-verb");
+  if (verb && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    var verbs = ["train", "run", "swim", "cycle", "row"];
+    var FADE = 300; // keep in step with .hero__verb's transition
+    var v = 0;
+    setInterval(function () {
+      verb.classList.add("is-swapping");
+      setTimeout(function () {
+        v = (v + 1) % verbs.length;
+        verb.textContent = verbs[v];
+        verb.classList.remove("is-swapping");
+      }, FADE);
+    }, 2600);
+  }
+
   // ---- Waitlist storage: Supabase ----
   // Sign-ups POST into the `waitlist` table of project prftbirfbzhdacuenatw. The
   // publishable key is meant to be public — it grants INSERT only (insert-only RLS;
