@@ -152,9 +152,17 @@ html.no-intro .page { animation: none; }
   margin: 0 auto 48px;
 }
 .accent { color: var(--accent); }
-/* Rotating hero verb. Crossfade only — the line re-centres as the word's width
-   changes, which is why the swap happens while it's at zero opacity. */
-.hero__verb { transition: opacity 0.3s ease; }
+/* Rotating hero verb. The slot is pinned to the widest word ("swim." — measured at
+   2.72em in this face at its -0.03em tracking) so the line's total width never
+   changes and "how you" holds still; only the word crossfades. Left-aligned, so the
+   space after "you" stays a normal word space and the slack falls after the stop.
+   em rather than px, so it survives the mobile font-size. */
+.hero__slot {
+  display: inline-block;
+  width: 2.73em;
+  text-align: left;
+}
+.hero__verb { transition: opacity 0.38s ease; }
 .hero__verb.is-swapping { opacity: 0; }
 
 /* ---- Hero ---- */

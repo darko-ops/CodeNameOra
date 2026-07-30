@@ -23,7 +23,7 @@
   var verb = document.getElementById("hero-verb");
   if (verb && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     var verbs = ["train", "run", "swim", "cycle", "row"];
-    var FADE = 300; // keep in step with .hero__verb's transition
+    var FADE = 380; // keep in step with .hero__verb's transition
     var v = 0;
     setInterval(function () {
       verb.classList.add("is-swapping");
@@ -32,7 +32,7 @@
         verb.textContent = verbs[v];
         verb.classList.remove("is-swapping");
       }, FADE);
-    }, 2600);
+    }, 4200);
   }
 
   // ---- Waitlist storage: Supabase ----
