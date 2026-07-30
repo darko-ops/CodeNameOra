@@ -30,8 +30,6 @@ struct RootView: View {
                 }
             }
         }
-        .environmentObject(coordinator)
-        .environmentObject(nowPlaying)
         .preferredColorScheme(.dark)
         .sheet(isPresented: $coordinator.showingLibrary) {
             LibraryView()
@@ -39,6 +37,14 @@ struct RootView: View {
         .sheet(isPresented: $coordinator.showingMusicSetup) {
             MusicSetupSheet()
         }
+        // Injected last, so these end up the OUTERMOST modifiers. A sheet's content
+        // inherits the environment of the view its modifier is attached to, and a
+        // modifier chained after .environmentObject is that view's ancestor — so it
+        // cannot see the object. With these above the sheets, MusicSetupSheet (which
+        // reads the coordinator through MusicProviderButtons) trapped the moment
+        // sign-in raised it. Keep new presentation modifiers ABOVE this pair.
+        .environmentObject(coordinator)
+        .environmentObject(nowPlaying)
     }
 }
 
