@@ -44,7 +44,7 @@ struct LibraryView: View {
                         MusicIntegrationsView()
                     } label: {
                         Image(systemName: "music.note")
-                            .foregroundColor(.zoneSteady)
+                            .foregroundColor(.oraTextSecondary)
                     }
                     .accessibilityLabel("Music integrations")
                 }
@@ -53,7 +53,7 @@ struct LibraryView: View {
                         LearnedDataView()
                     } label: {
                         Image(systemName: "brain")
-                            .foregroundColor(.zoneSteady)
+                            .foregroundColor(.oraTextSecondary)
                     }
                     .accessibilityLabel("What Dromo has learned")
                 }
@@ -100,7 +100,7 @@ struct LibraryView: View {
                         SummaryRow(summary: summary)
                     }
                     .listRowBackground(Color.oraSurface)
-                    .listRowSeparatorTint(Color.oraSurfaceElevated)
+                    .listRowSeparatorTint(Color.oraBorder)
                 }
                 .onDelete { indexSet in
                     let ids = indexSet.map { vm.summaries[$0].id }
@@ -131,12 +131,10 @@ private struct SummaryRow: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
                 Text(PaceMath.paceString(secondsPerKm: summary.averagePaceSecondsPerKm, metric: true))
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.zoneSteady)
                     .monospacedDigit()
-                Text("avg pace")
-                    .font(.system(size: 10))
-                    .foregroundColor(.oraTextMuted)
+                OraLabel("avg pace")
             }
         }
         .padding(.vertical, 4)

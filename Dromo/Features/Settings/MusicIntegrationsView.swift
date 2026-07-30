@@ -27,12 +27,10 @@ struct MusicIntegrationsView: View {
                                     aliases: coordinator.recordingAliases)
 
                 if let email = coordinator.account.currentEmail {
-                    Divider().overlay(Color.oraTextMuted.opacity(0.3))
+                    Divider().overlay(Color.oraBorder)
 
                     VStack(alignment: .leading, spacing: Spacing.sm) {
-                        Text("Signed in as")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.oraTextMuted)
+                        OraLabel("Signed in as")
                         Text(email)
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.oraTextPrimary)
@@ -79,9 +77,7 @@ struct MusicIntegrationsView: View {
     /// "disconnect" — auth is retained, and flipping back in is instant.
     private var sourcesCard: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            Text("Your sources")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("Your sources")
 
             ForEach(coordinator.sources) { source in
                 HStack(spacing: Spacing.sm) {
@@ -138,9 +134,6 @@ struct MusicIntegrationsView: View {
                 Spacer()
             }
         }
-        .padding(Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
     }
 }

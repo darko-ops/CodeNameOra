@@ -18,13 +18,8 @@ struct PostRunSummaryView: View {
 
                 Button { coordinator.startOver() } label: {
                     Text("New run")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.zoneSteady)
-                        .foregroundColor(.black)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
+                .buttonStyle(.lightPrimary)
 
                 Button { coordinator.showingLibrary = true } label: {
                     Label("View history", systemImage: "clock.arrow.circlepath")
@@ -40,7 +35,7 @@ struct PostRunSummaryView: View {
     private var header: some View {
         VStack(spacing: 4) {
             Text("Run complete")
-                .font(.system(size: 26, weight: .bold))
+                .font(.system(size: 26, weight: .semibold))
                 .foregroundColor(.oraTextPrimary)
             Text("Nice work.")
                 .font(.system(size: 14))
@@ -60,7 +55,11 @@ struct PostRunSummaryView: View {
                          spacing: Spacing.md) {
             stat("Distance", distance)
             stat("Time", PaceMath.clock(session.elapsedSeconds))
-            stat("Avg pace", PaceMath.paceString(secondsPerKm: session.averagePaceSecondsPerKm, metric: metric))
+            // Avg pace is derived from the run, so it carries the accent; the rest are
+            // measured or historical totals and stay primary (rule 1).
+            stat("Avg pace",
+                 PaceMath.paceString(secondsPerKm: session.averagePaceSecondsPerKm, metric: metric),
+                 color: .zoneSteady)
             stat("Avg off-pace", String(format: "%.0f s/km", session.averageGap))
             stat("Track changes", "\(session.trackChanges)")
             stat("BPM range", bpmRangeText)
@@ -72,11 +71,12 @@ struct PostRunSummaryView: View {
         return "\(Int(lo))–\(Int(hi))"
     }
 
-    private func stat(_ title: String, _ value: String) -> some View {
+    private func stat(_ title: String, _ value: String,
+                      color: Color = .oraTextPrimary) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(.oraTextPrimary)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(color)
                 .monospacedDigit()
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
@@ -86,35 +86,28 @@ struct PostRunSummaryView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .oraCard(radius: 14, padding: nil)
     }
 
     // MARK: - Chart
 
     private var chartCard: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("PACE vs BPM")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("Pace vs BPM")
             PaceChartView(samples: session.samples,
                           bpm: session.bpmHistory,
                           targetPace: session.targetPaceSecondsPerKm,
                           metric: session.settings.useMetric)
                 .frame(height: 180)
         }
-        .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
     }
 
     // MARK: - Export
 
     private var exportCard: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("EXPORT")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("Export")
 
             exportRow(
                 title: "Strava",
@@ -131,9 +124,7 @@ struct PostRunSummaryView: View {
                 action: { export.saveToHealth(session.completedSession) }
             )
         }
-        .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
     }
 
     private func exportRow(title: String, system: String,

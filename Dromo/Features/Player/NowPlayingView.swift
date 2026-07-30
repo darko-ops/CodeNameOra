@@ -84,7 +84,7 @@ struct NowPlayingView: View {
                 Spacer()
                 Text("-" + PaceMath.clock(max(0, np.duration - np.elapsed)))
             }
-            .font(.system(size: 12, design: .rounded))
+            .font(.system(size: 12))
             .foregroundColor(.oraTextMuted)
             .monospacedDigit()
         }
@@ -182,7 +182,7 @@ struct NowPlayingView: View {
             Spacer()
             if track.bpm > 0 {
                 Text("\(Int(track.bpm))")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.oraTextMuted)
                     .monospacedDigit()
             }
@@ -225,7 +225,7 @@ struct NowPlayingView: View {
             Text(label).font(.system(size: 14)).foregroundColor(.oraTextSecondary)
             Spacer()
             Text(value)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(color)
                 .monospacedDigit()
         }
@@ -237,7 +237,7 @@ struct NowPlayingView: View {
                 Text("Energy").font(.system(size: 14)).foregroundColor(.oraTextSecondary)
                 Spacer()
                 Text("\(Int(track.energyLevel * 100))%")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(accent)
                     .monospacedDigit()
             }

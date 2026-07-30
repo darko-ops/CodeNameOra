@@ -23,7 +23,7 @@ struct TrackRow: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(Int(track.bpm))")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(accent)
                     .monospacedDigit()
                 Text("BPM")

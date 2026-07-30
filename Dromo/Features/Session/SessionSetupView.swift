@@ -44,7 +44,7 @@ struct SessionSetupView: View {
     private var header: some View {
         HStack {
             Text("Set your target")
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(.oraTextPrimary)
             Spacer()
             Picker("Unit", selection: $vm.useMetric) {
@@ -65,7 +65,7 @@ struct SessionSetupView: View {
                 .foregroundColor(.oraWarning)
             Text(note)
                 .font(.system(size: 12))
-                .foregroundColor(.oraTextSecondary)
+                .foregroundColor(.oraWarning)
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,7 +90,7 @@ struct SessionSetupView: View {
                 goalTimeInputs
             }
 
-            Divider().overlay(Color.oraTextMuted)
+            Divider().overlay(Color.oraBorder)
 
             HStack {
                 Text("Target pace")
@@ -98,14 +98,12 @@ struct SessionSetupView: View {
                     .foregroundColor(.oraTextSecondary)
                 Spacer()
                 Text(vm.targetPaceDisplay)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundColor(.zoneSteady)
                     .monospacedDigit()
             }
         }
-        .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
     }
 
     private var paceWheels: some View {
@@ -145,15 +143,13 @@ struct SessionSetupView: View {
             Picker(suffix, selection: value) {
                 ForEach(Array(range), id: \.self) { n in
                     Text(zeroPadded ? String(format: "%02d", n) : "\(n)")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .font(.system(size: 22, weight: .semibold))
                         .tag(n)
                 }
             }
             .pickerStyle(.wheel)
             .frame(width: 64)
-            Text(suffix)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel(suffix)
         }
     }
 
@@ -161,14 +157,12 @@ struct SessionSetupView: View {
 
     private var distanceGoalCard: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("DISTANCE GOAL (OPTIONAL)")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("Distance goal (optional)")
             HStack {
                 Text(vm.distanceGoalKm > 0
                      ? String(format: "%.1f km", vm.distanceGoalKm)
                      : "Off")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(vm.distanceGoalKm > 0 ? .zoneSteady : .oraTextMuted)
                     .monospacedDigit()
                 Spacer()
@@ -181,18 +175,14 @@ struct SessionSetupView: View {
                 .font(.system(size: 12))
                 .foregroundColor(.oraTextSecondary)
         }
-        .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraRuledCard()
     }
 
     // MARK: - Sensitivity
 
     private var sensitivityCard: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("BPM SENSITIVITY")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("BPM sensitivity")
             Picker("Sensitivity", selection: $vm.sensitivity) {
                 Text("Easy").tag(UserSettings.BPMSensitivity.conservative)
                 Text("Standard").tag(UserSettings.BPMSensitivity.standard)
@@ -203,9 +193,7 @@ struct SessionSetupView: View {
                 .font(.system(size: 12))
                 .foregroundColor(.oraTextSecondary)
         }
-        .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraRuledCard()
     }
 
     // MARK: - Start
@@ -215,13 +203,8 @@ struct SessionSetupView: View {
             showLiveHUD = true   // launch the live adaptive engine (LiveLoop)
         } label: {
             Text("Start run")
-                .font(.system(size: 17, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(vm.isValid ? Color.zoneSteady : Color.oraSurfaceElevated)
-                .foregroundColor(vm.isValid ? .black : .oraTextMuted)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
         }
+        .buttonStyle(.lightPrimary)
         .disabled(!vm.isValid)
         .padding(.horizontal, Spacing.screen)
         .padding(.bottom, Spacing.lg)

@@ -38,7 +38,7 @@ struct AuthView: View {
 
             VStack(spacing: Spacing.sm) {
                 Text("Dromo")
-                    .font(.system(size: 48, weight: .black, design: .rounded))
+                    .font(.system(size: 48, weight: .black))
                     .foregroundColor(.oraTextPrimary)
                 Text("Run to the beat. Hit your pace.")
                     .font(.system(size: 15))

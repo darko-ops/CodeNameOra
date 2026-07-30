@@ -24,9 +24,7 @@ struct WhatMovedYouCard: View {
         if !highlights.isEmpty {
             VStack(alignment: .leading, spacing: Spacing.md) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("WHAT MOVED YOU")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.oraTextMuted)
+                    OraLabel("What moved you")
                     Text("Measured while each track played")
                         .font(.system(size: 11))
                         .foregroundColor(.oraTextMuted)
@@ -37,14 +35,11 @@ struct WhatMovedYouCard: View {
                 }
 
                 if let drag {
-                    Divider().overlay(Color.oraTextMuted.opacity(0.25))
+                    Divider().overlay(Color.oraBorder)
                     row(drag, tint: .zonePeak)
                 }
             }
-            .padding(Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.oraSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .oraCard()
         }
     }
 

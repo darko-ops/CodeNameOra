@@ -21,6 +21,7 @@ struct LiveHUDView: View {
             statusGlow
 
             VStack(spacing: Spacing.lg) {
+                topBar
                 nudgeBadge
                 nudgeSubtitle
                 paceBlock
@@ -36,17 +37,6 @@ struct LiveHUDView: View {
         }
         .overlay { paceAlertOverlay }
         .animation(.easeInOut(duration: 0.4), value: vm.paceAlert)
-        .overlay(alignment: .topTrailing) {
-            Button("End") {
-                // Stop first so the final track's response is finalized and counted in
-                // the summary; without this the last (often longest) play is missing.
-                vm.stop()
-                if RunHighlights.isEmpty(vm.runResponses) { dismiss() } else { showingSummary = true }
-            }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.oraTextSecondary)
-                .padding(Spacing.md)
-        }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showingSummary) {
             LiveRunSummarySheet(responses: vm.runResponses, labels: vm.labelsByID) {
@@ -70,6 +60,25 @@ struct LiveHUDView: View {
             .animation(.easeInOut(duration: 0.4), value: vm.state.nudge)
     }
 
+    // MARK: Top bar — wordmark + End
+
+    /// The lockup replaces a bare elapsed label: time already reads in the pace block,
+    /// so this row carries identity instead of repeating a number.
+    private var topBar: some View {
+        HStack {
+            DromoWordmark(size: 14, color: .oraTextSecondary)
+            Spacer()
+            Button("End") {
+                // Stop first so the final track's response is finalized and counted in
+                // the summary; without this the last (often longest) play is missing.
+                vm.stop()
+                if RunHighlights.isEmpty(vm.runResponses) { dismiss() } else { showingSummary = true }
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundColor(.oraTextSecondary)
+        }
+    }
+
     // MARK: Nudge
 
     private var nudgeColor: Color {
@@ -90,7 +99,8 @@ struct LiveHUDView: View {
 
     private var nudgeBadge: some View {
         Text(nudgeText)
-            .font(.system(size: 34, weight: .bold, design: .rounded))
+            .font(.system(size: 30, weight: .bold))
+            .tracking(Tracking.badge)
             .foregroundColor(nudgeColor)
             .padding(.vertical, Spacing.md)
             .frame(maxWidth: .infinity)
@@ -118,7 +128,7 @@ struct LiveHUDView: View {
 
     private var paceBlock: some View {
         HStack(spacing: 0) {
-            metric("PACE",
+            metric("PACE /KM",
                    PaceMath.paceString(secondsPerKm: vm.state.currentPaceSecPerKm, metric: true),
                    nudgeColor)
             divider
@@ -131,20 +141,19 @@ struct LiveHUDView: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.07)).frame(width: 1, height: 34)
+        Rectangle().fill(Color.oraBorder).frame(width: 1, height: 34)
     }
 
     private func metric(_ title: String, _ value: String, _ color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .font(.system(size: 29, weight: .bold))
+                .tracking(Tracking.numeric)
                 .foregroundColor(color)
                 .monospacedDigit()
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel(title)
         }
         .frame(maxWidth: .infinity)
     }
@@ -153,11 +162,9 @@ struct LiveHUDView: View {
 
     private var cadence: some View {
         VStack(spacing: 2) {
-            Text("CADENCE")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("Cadence")
             (Text("\(Int(vm.state.currentCadence)) ")
-                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .font(.system(size: 17, weight: .semibold))
              + Text("spm")
                 .font(.system(size: 12)))
                 .foregroundColor(.oraTextPrimary)
@@ -173,9 +180,14 @@ struct LiveHUDView: View {
     private var bpmBar: some View {
         let center = max(vm.state.targetCadence, 1)
         let target = vm.state.nowPlayingBPM ?? center
+        // Nil until there's a real reading: a tick pinned to the low end of the range
+        // would read as "your cadence is 148", not "we don't know it yet".
+        let liveCadence = vm.state.currentCadence > 0 ? vm.state.currentCadence : nil
         return BPMBarView(targetBPM: target,
                           range: (center - 20)...(center + 20),
-                          color: nudgeColor)
+                          color: nudgeColor,
+                          cadence: liveCadence,
+                          isPushing: vm.state.nudge == .speedUp)
     }
 
     // MARK: Now playing
@@ -206,16 +218,17 @@ struct LiveHUDView: View {
             if let bpm = vm.state.nowPlayingBPM {
                 VStack(spacing: 0) {
                     Text("\(Int(bpm))")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundColor(nudgeColor)
                         .monospacedDigit()
-                    Text("BPM").font(.system(size: 9)).foregroundColor(.oraTextMuted)
+                    Text("BPM")
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(Tracking.labelTight)
+                        .foregroundColor(.oraTextMuted)
                 }
             }
         }
-        .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
         .contentShape(Rectangle())
         .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showingReason.toggle() } }
         .overlay(alignment: .bottom) { reasonPopover }
@@ -295,25 +308,18 @@ struct LiveHUDView: View {
 
     private var controls: some View {
         HStack(spacing: Spacing.md) {
+            // Pause is the primary mid-run control, so it takes the light button; End
+            // stays quieter, since it's the one that costs the run.
             Button { vm.togglePause() } label: {
                 Label(vm.isPaused ? "Resume" : "Pause",
                       systemImage: vm.isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.oraSurfaceElevated)
-                    .foregroundColor(.oraTextPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .buttonStyle(.lightPrimary(radius: 12, verticalPadding: 14))
+
             Button { dismiss() } label: {
                 Text("End")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.oraDestructive.opacity(0.2))
-                    .foregroundColor(.oraDestructive)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .buttonStyle(.oraDestructiveNeutral)
         }
     }
 
@@ -330,7 +336,7 @@ struct LiveHUDView: View {
 
             ZStack {
                 RadialGradient(
-                    colors: [tint.opacity(0.45), tint.opacity(0.12), .clear],
+                    colors: [tint.opacity(0.32), tint.opacity(0.1), .clear],
                     center: .center, startRadius: 0, endRadius: 360)
                     .ignoresSafeArea()
 
@@ -338,10 +344,12 @@ struct LiveHUDView: View {
                     Image(systemName: alert == .tooSlow ? "hare.fill" : "tortoise.fill")
                         .font(.system(size: 40, weight: .bold))
                     Text(title)
-                        .font(.system(size: 44, weight: .black, design: .rounded))
+                        .font(.system(size: 37, weight: .bold))
                     Text(subtitle)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.oraTextSecondary)
+                        // A light tint of the zone colour, not neutral secondary: the
+                        // subtitle belongs to the alert, and reads as part of it.
+                        .foregroundColor(tint.opacity(0.75))
                 }
                 .foregroundColor(tint)
                 .shadow(color: tint.opacity(0.5), radius: 16)

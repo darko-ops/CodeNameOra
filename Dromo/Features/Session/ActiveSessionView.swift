@@ -26,6 +26,11 @@ struct ActiveSessionView: View {
     private var hud: some View {
         let status = session.status
         return VStack(spacing: Spacing.lg) {
+            HStack {
+                DromoWordmark(size: 14, color: .oraTextSecondary)
+                Spacer()
+            }
+
             statusBanner(status)
 
             paceBlock(status)
@@ -47,7 +52,8 @@ struct ActiveSessionView: View {
     private func statusBanner(_ status: RunFeedback.Status) -> some View {
         VStack(spacing: 4) {
             Text(status.label)
-                .font(.system(size: 40, weight: .black, design: .rounded))
+                .font(.system(size: 30, weight: .bold))
+                .tracking(Tracking.badge)
                 .foregroundColor(status.color)
             Text(RunFeedback.gapDescription(session.gap))
                 .font(.system(size: 13))
@@ -59,7 +65,7 @@ struct ActiveSessionView: View {
 
     private func paceBlock(_ status: RunFeedback.Status) -> some View {
         HStack {
-            metric(title: "PACE",
+            metric(title: "PACE /KM",
                    value: PaceMath.paceString(secondsPerKm: session.currentPaceSecondsPerKm,
                                               metric: session.settings.useMetric),
                    color: status.color)
@@ -77,23 +83,25 @@ struct ActiveSessionView: View {
     private func metric(title: String, value: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .font(.system(size: 29, weight: .bold))
+                .tracking(Tracking.numeric)
                 .foregroundColor(color)
                 .monospacedDigit()
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel(title)
         }
         .frame(maxWidth: .infinity)
     }
 
     private var nowPlaying: some View {
         VStack(spacing: Spacing.sm) {
+            // No cadence tick here: `SessionController` tracks pace and BPM, not
+            // cadence. The tick appears in `LiveHUDView`, whose `LoopState` measures it.
             BPMBarView(targetBPM: session.targetBPM,
                        range: session.settings.minBPM...session.settings.maxBPM,
-                       color: session.status.color)
+                       color: session.status.color,
+                       isPushing: session.status == .push)
 
             HStack(spacing: Spacing.md) {
                 ZStack {
@@ -118,15 +126,16 @@ struct ActiveSessionView: View {
                 if let bpm = session.currentTrack?.bpm {
                     VStack(spacing: 0) {
                         Text("\(Int(bpm))")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundColor(session.status.color)
-                        Text("BPM").font(.system(size: 9)).foregroundColor(.oraTextMuted)
+                        Text("BPM")
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(Tracking.labelTight)
+                            .foregroundColor(.oraTextMuted)
                     }
                 }
             }
-            .padding(Spacing.md)
-            .background(Color.oraSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .oraCard()
             .animation(.easeInOut(duration: 0.4), value: session.currentTrack?.id)
         }
     }
@@ -136,8 +145,10 @@ struct ActiveSessionView: View {
     private var simulatorControl: some View {
         VStack(spacing: Spacing.sm) {
             HStack {
-                Label("SIMULATED PACE", systemImage: "hammer.fill")
-                    .font(.system(size: 10, weight: .medium))
+                Label("Simulated pace", systemImage: "hammer.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(Tracking.label)
+                    .textCase(.uppercase)
                     .foregroundColor(.oraTextMuted)
                 Spacer()
                 Text(PaceMath.paceString(secondsPerKm: session.simulatedPaceSecondsPerKm,
@@ -185,22 +196,13 @@ struct ActiveSessionView: View {
             Button { session.togglePause() } label: {
                 Label(session.phase == .paused ? "Resume" : "Pause",
                       systemImage: session.phase == .paused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.oraSurfaceElevated)
-                    .foregroundColor(.oraTextPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .buttonStyle(.lightPrimary(radius: 12, verticalPadding: 14))
+
             Button { coordinator.finishSession() } label: {
                 Text("End")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.oraDestructive.opacity(0.2))
-                    .foregroundColor(.oraDestructive)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .buttonStyle(.oraDestructiveNeutral)
         }
     }
 }
@@ -215,7 +217,7 @@ private struct CountdownView: View {
                 .font(.system(size: 16))
                 .foregroundColor(.oraTextSecondary)
             Text("\(value)")
-                .font(.system(size: 120, weight: .black, design: .rounded))
+                .font(.system(size: 120, weight: .bold))
                 .foregroundColor(.oraTextPrimary)
                 .id(value)
                 .transition(.scale.combined(with: .opacity))

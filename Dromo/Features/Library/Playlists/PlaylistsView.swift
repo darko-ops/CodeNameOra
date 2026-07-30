@@ -202,7 +202,7 @@ struct PlaylistsView: View {
                 .foregroundColor(.oraTextPrimary)
                 .lineLimit(1)
             Text("\(Int(track.bpm)) BPM")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.zoneSteady)
         }
         .frame(width: 132)

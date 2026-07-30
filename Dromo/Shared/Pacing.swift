@@ -77,9 +77,11 @@ enum RunFeedback {
 
         var color: Color {
             switch self {
-            case .push:   return .zonePeak      // orange-red
-            case .onPace: return .zoneSteady    // green
-            case .ease:   return .zoneWarmUp    // blue
+            // Each is a hue rotation of the steel accent at matched lightness — the
+            // states stay distinguishable without the old neon.
+            case .push:   return .zonePeak      // warm clay
+            case .onPace: return .zoneSteady    // steel
+            case .ease:   return .zoneWarmUp    // cool slate
             }
         }
     }

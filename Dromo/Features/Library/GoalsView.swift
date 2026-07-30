@@ -85,7 +85,7 @@ struct GoalsView: View {
                         .foregroundColor(.oraTextMuted)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(valueText)
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.system(size: 28, weight: .bold))
                             .foregroundColor(.oraTextPrimary)
                             .monospacedDigit()
                         Text(unit)

@@ -15,20 +15,19 @@ struct DashboardView: View {
 
     private var tiles: some View {
         HStack(spacing: Spacing.md) {
-            tile("MOMENTUM", "\(stats.momentumWeeks)", stats.momentumWeeks == 1 ? "wk streak" : "wk streak", .zonePeak)
-            tile("TOTAL", "\(stats.totalUses)", stats.totalUses == 1 ? "run" : "runs", .zoneSteady)
-            tile("LISTENS", "\(stats.totalListens)", stats.totalListens == 1 ? "song" : "songs", .zoneWarmUp)
+            tile("Momentum", "\(stats.momentumWeeks)", "wk streak")
+            tile("Total", "\(stats.totalUses)", stats.totalUses == 1 ? "run" : "runs")
+            tile("Listens", "\(stats.totalListens)", stats.totalListens == 1 ? "song" : "songs")
         }
     }
 
-    private func tile(_ label: String, _ value: String, _ unit: String, _ accent: Color) -> some View {
+    private func tile(_ label: String, _ value: String, _ unit: String) -> some View {
         VStack(spacing: 4) {
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel(label)
+            // Historical totals, so primary rather than accent (rule 1).
             Text(value)
-                .font(.system(size: 30, weight: .bold, design: .rounded))
-                .foregroundColor(accent)
+                .font(.system(size: 30, weight: .bold))
+                .foregroundColor(.oraTextPrimary)
                 .monospacedDigit()
             Text(unit)
                 .font(.system(size: 11))
@@ -36,36 +35,32 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard(padding: nil)
     }
 
     // MARK: Most played
 
     private var mostPlayed: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("MOST PLAYED")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("Most played")
             VStack(spacing: 0) {
                 ForEach(Array(stats.topTracks.enumerated()), id: \.element.id) { index, track in
                     row(rank: index + 1, track: track)
                     if index < stats.topTracks.count - 1 {
-                        Divider().overlay(Color.oraSurfaceElevated)
+                        Divider().overlay(Color.oraBorder)
                     }
                 }
             }
             .padding(.horizontal, Spacing.md)
             .padding(.vertical, Spacing.xs)
-            .background(Color.oraSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .oraCard(padding: nil)
         }
     }
 
     private func row(rank: Int, track: TopTrack) -> some View {
         HStack(spacing: Spacing.md) {
             Text("\(rank)")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.oraTextMuted)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 2) {
@@ -80,7 +75,7 @@ struct DashboardView: View {
             }
             Spacer()
             Text("\(track.plays)×")
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.zoneSteady)
                 .monospacedDigit()
         }

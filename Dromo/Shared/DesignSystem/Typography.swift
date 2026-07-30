@@ -1,18 +1,42 @@
 import SwiftUI
 
-/// Design tokens — Typography (Section 9.2).
+/// Design tokens — Typography.
 ///
-/// Primary display font: Syne (bold numerics, wide tracking).
-/// Secondary / mono: DM Mono (data readouts, labels).
+/// Design language v2. The site sets `"Helvetica Neue", Helvetica, Arial, sans-serif`;
+/// on iOS the honest equivalent is the system font (SF Pro) at `.default` design.
 ///
-/// NOTE (Phase 0): the custom font files are not yet embedded. These custom
-/// fonts fall back to the system font until the .ttf files are added to
-/// Resources/Fonts and registered via UIAppFonts in Info.plist.
+/// This replaces declarations for Syne and DM Mono. Those font files were never
+/// embedded, so they already resolved to the system font — naming them recorded an
+/// intent the app never actually had. `.rounded` is deliberately absent: that softness
+/// is what made the app read as a different product from the site.
 extension Font {
-    static let oraDisplay = Font.custom("Syne-ExtraBold", size: 52)
-    static let oraTitle = Font.custom("Syne-Bold", size: 28)
-    static let oraHeadline = Font.custom("Syne-SemiBold", size: 20)
-    static let oraBody = Font.custom("DMSans-Regular", size: 16)
-    static let oraCaption = Font.custom("DMMono-Regular", size: 11)
-    static let oraLabel = Font.custom("DMMono-Medium", size: 10)
+    /// Large numeric display — pace, cadence, BPM. Pair with `.monospacedDigit()`.
+    static let oraDisplay = Font.system(size: 30, weight: .bold)
+    /// Screen titles.
+    static let oraTitle = Font.system(size: 22, weight: .semibold)
+    /// Card headings.
+    static let oraHeadline = Font.system(size: 16, weight: .semibold)
+    /// Body copy — use with `oraTextSecondary`.
+    static let oraBody = Font.system(size: 15, weight: .regular)
+    static let oraCaption = Font.system(size: 13, weight: .regular)
+    /// Eyebrow label. Pair with `.textCase(.uppercase)` and `.tracking(Tracking.label)`.
+    static let oraLabel = Font.system(size: 10, weight: .semibold)
+}
+
+/// Letter-spacing from the site, resolved to points.
+///
+/// SwiftUI's `.tracking` takes points rather than em, so each value below is the spec's
+/// em figure multiplied by the size it is used at: labels +0.16em at 10pt, the wordmark
+/// +0.04em at 16pt, numeric display −0.03em at 29pt, the nudge badge +0.02em at 30pt.
+enum Tracking {
+    /// Uppercase eyebrow labels (+0.16em at 10pt).
+    static let label: CGFloat = 1.6
+    /// Smaller inline caps such as the `BPM` sublabel (+0.14em at 9pt).
+    static let labelTight: CGFloat = 1.26
+    /// The `DROMO` wordmark (+0.04em at 16pt).
+    static let wordmark: CGFloat = 0.64
+    /// Numeric display (−0.03em at 29pt).
+    static let numeric: CGFloat = -0.87
+    /// The nudge badge (+0.02em at 30pt).
+    static let badge: CGFloat = 0.6
 }

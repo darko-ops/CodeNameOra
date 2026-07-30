@@ -37,7 +37,7 @@ struct LibraryDetailView: View {
     private func stat(_ title: String, _ value: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 22, weight: .bold))
                 .foregroundColor(.oraTextPrimary)
                 .monospacedDigit()
                 .minimumScaleFactor(0.6)

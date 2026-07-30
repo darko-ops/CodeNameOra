@@ -15,7 +15,7 @@ struct LiveRunSummarySheet: View {
             VStack(alignment: .leading, spacing: Spacing.lg) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Nice run")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(.system(size: 26, weight: .bold))
                         .foregroundColor(.oraTextPrimary)
                     Text("Here's what Dromo measured while you ran.")
                         .font(.system(size: 13))

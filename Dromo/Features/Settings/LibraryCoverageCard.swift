@@ -50,13 +50,11 @@ struct LibraryCoverageCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text("TEMPO COVERAGE")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.oraTextMuted)
+            OraLabel("Tempo coverage")
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(model.coverage.tagged)")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundColor(.oraTextPrimary)
                     .monospacedDigit()
                 Text("of \(model.coverage.total) tracks")
@@ -87,10 +85,7 @@ struct LibraryCoverageCard: View {
             }
             .tint(.zoneSteady)
         }
-        .padding(Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
         .task(id: library.count) { await model.load(library: library, aliases: aliases) }
     }
 
@@ -105,7 +100,7 @@ struct LibraryCoverageCard: View {
                     .frame(width: max(0, min(1, model.coverage.fraction)) * geo.size.width)
             }
         }
-        .frame(height: 8)
+        .frame(height: 10)
         .animation(.easeInOut(duration: 0.4), value: model.coverage)
     }
 }

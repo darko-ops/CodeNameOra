@@ -38,7 +38,7 @@ struct TrackArtwork: View {
             .frame(width: size, height: size)
             .overlay(
                 Text(initial)
-                    .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
+                    .font(.system(size: size * 0.4, weight: .bold))
                     .foregroundColor(.white.opacity(0.9))
             )
             .overlay(

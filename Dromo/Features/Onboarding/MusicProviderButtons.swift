@@ -14,7 +14,11 @@ struct MusicProviderButtons: View {
 
     var body: some View {
         VStack(spacing: Spacing.md) {
-            button(.appleMusic, system: "applelogo", background: .white, foreground: .black)
+            // Apple Music was already white, so it now literally shares the light
+            // primary token with every other CTA. Spotify green is a brand colour and
+            // is exempt from the muting (spec 1.2).
+            button(.appleMusic, system: "applelogo",
+                   background: .oraButtonFill, foreground: .oraButtonText)
             button(.spotify, system: "music.note",
                    background: Color(hex: "#1DB954"), foreground: .black)
 
@@ -36,7 +40,7 @@ struct MusicProviderButtons: View {
                     Image(systemName: system)
                 }
                 Text(label(for: choice))
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)

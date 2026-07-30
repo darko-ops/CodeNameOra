@@ -6,6 +6,9 @@ import DromoCore
 struct RootView: View {
     @StateObject private var coordinator = AppCoordinator()
     @StateObject private var nowPlaying = NowPlayingController()
+    /// Drives the launch reveal — the site's unlock transition, carried over.
+    @State private var revealed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -28,6 +31,20 @@ struct RootView: View {
                     PostRunSummaryView(session: session)
                         .transition(.opacity)
                 }
+            }
+        }
+        // The site's unlock reveal, as the app's launch transition: opacity 0→1,
+        // blur 12→0, scale 1.03→1 over ~1.1s. Skipped under Reduce Motion, where a
+        // blurring, scaling whole-screen animation is exactly what's being opted out of.
+        .opacity(revealed ? 1 : 0)
+        .blur(radius: revealed ? 0 : 12)
+        .scaleEffect(revealed ? 1 : 1.03)
+        .onAppear {
+            guard !revealed else { return }
+            if reduceMotion {
+                revealed = true
+            } else {
+                withAnimation(.easeOut(duration: 1.1)) { revealed = true }
             }
         }
         .preferredColorScheme(.dark)

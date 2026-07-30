@@ -51,7 +51,7 @@ struct LearnedDataView: View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Text("What Dromo has learned")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.oraTextPrimary)
                 Text("Dromo watches how your cadence responds to each track and uses it "
                      + "to pick better music for you. This stays on your phone — it's "
@@ -69,18 +69,12 @@ struct LearnedDataView: View {
                     row("Tracks you rated", count: model.tasteCount)
                 }
                 .padding(Spacing.md)
-                .background(Color.oraSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .oraCard(padding: nil)
 
                 Button(role: .destructive) { confirming = true } label: {
                     Text("Reset what Dromo has learned")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color.oraDestructive.opacity(0.2))
-                        .foregroundColor(.oraDestructive)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .buttonStyle(.oraDestructive)
                 .confirmationDialog("Reset learned data?", isPresented: $confirming,
                                     titleVisibility: .visible) {
                     Button("Reset", role: .destructive) { Task { await model.reset() } }
@@ -128,8 +122,7 @@ struct LearnedDataView: View {
             .tint(.zoneSteady)
         }
         .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
     }
 
     /// Phase 4: help tag songs for every runner. Shown even while it's unavailable,
@@ -164,8 +157,7 @@ struct LearnedDataView: View {
             }
         }
         .padding(Spacing.md)
-        .background(Color.oraSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .oraCard()
     }
 
     private func label(for mode: PaceMode) -> String {
@@ -183,7 +175,7 @@ struct LearnedDataView: View {
                 .foregroundColor(.oraTextSecondary)
             Spacer()
             Text("\(count)")
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.oraTextPrimary)
                 .monospacedDigit()
         }
