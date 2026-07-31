@@ -24,7 +24,11 @@ final class AccountStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.currentEmail = defaults.string(forKey: sessionKey)
+        // An empty stored email is not a session. Treating it as one would restore a
+        // signed-in state with no account behind it, and it's the shape a cleared or
+        // overridden default arrives in.
+        let stored = defaults.string(forKey: sessionKey)
+        self.currentEmail = (stored?.isEmpty ?? true) ? nil : stored
     }
 
     enum AuthError: LocalizedError, Equatable {

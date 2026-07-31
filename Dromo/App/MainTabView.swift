@@ -8,21 +8,33 @@ struct MainTabView: View {
     @EnvironmentObject private var coordinator: AppCoordinator
     @EnvironmentObject private var nowPlaying: NowPlayingController
 
+    private enum Tab { case home, go, sound, you }
+    @State private var tab: Tab = .home
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             HomeView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(Tab.home)
 
             SessionSetupView()
                 .tabItem { Label("Go", systemImage: "figure.run") }
+                .tag(Tab.go)
 
             PlaylistsView()
                 .tabItem { Label("Sound", systemImage: "waveform") }
+                .tag(Tab.sound)
 
             LibraryView(showsDoneButton: false)
                 .tabItem { Label("You", systemImage: "person.fill") }
+                .tag(Tab.you)
         }
         .tint(.zoneSteady)
+        // Starting a run from the Sound tab's tempo ladder lands on Go with the pace
+        // already set. SessionSetupView consumes the request and clears it.
+        .onChange(of: coordinator.runRequest) { request in
+            if request != nil { tab = .go }
+        }
         .overlay(alignment: .bottom) {
             if let track = nowPlaying.current, !nowPlaying.isExpanded {
                 miniPlayer(track)

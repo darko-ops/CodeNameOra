@@ -66,6 +66,19 @@ final class SessionSetupViewModel: ObservableObject {
 
     var isValid: Bool { targetPaceSecondsPerKm > 60 && targetPaceSecondsPerKm < 1_200 }
 
+    /// Prefill from a pace chosen elsewhere — the Sound tab's tempo ladder.
+    ///
+    /// Forces pace mode, since a goal time can't express "run at 5:15/km" without also
+    /// asserting a distance the runner never picked. The seconds land on the nearest
+    /// value the wheel can show, so what's displayed is what will be run.
+    func apply(targetPaceSecondsPerKm pace: Double) {
+        mode = .pace
+        let perUnit = useMetric ? pace : pace * (PaceMath.metersPerMile / 1_000)
+        let rounded = Int(perUnit.rounded())
+        paceMinutes = min(max(rounded / 60, 2), 15)     // clamped to the wheel's range
+        paceSeconds = min(max(rounded % 60, 0), 59)
+    }
+
     func makeSettings() -> UserSettings {
         UserSettings(
             defaultPaceSecondsPerKm: targetPaceSecondsPerKm,

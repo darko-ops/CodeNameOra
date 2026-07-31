@@ -51,6 +51,29 @@ final class AppCoordinator: ObservableObject {
 
     init() {
         screen = account.isSignedIn ? .setup : .auth
+        Task { await restoreConnectedSources() }
+    }
+
+    /// True while the first restore is in flight, so the UI can say "reconnecting"
+    /// rather than "nothing connected".
+    @Published private(set) var isRestoringSources = false
+
+    /// Reconnect services the runner already authorized, without prompting.
+    ///
+    /// Authorizations outlive the process — Spotify's tokens sit in the Keychain, and
+    /// the media-library grant is remembered by the system — but `sources` is in-memory
+    /// only, so nothing here used to survive a relaunch. Every launch presented as
+    /// "no music connected" and asked the runner to sign in again, discarding a
+    /// perfectly good token in the process.
+    private func restoreConnectedSources() async {
+        isRestoringSources = true
+        defer { isRestoringSources = false }
+
+        for choice in ProviderChoice.allCases where !sources.contains(where: { $0.choice == choice }) {
+            let provider = makeProvider(for: choice)
+            guard await provider.isAuthorized else { continue }
+            _ = await connect(choice, using: provider)
+        }
     }
 
     /// Every connected service. Connecting ADDS a source — it never replaces one —
@@ -74,6 +97,35 @@ final class AppCoordinator: ObservableObject {
     /// Presents the run history (Library) as a sheet over the current screen.
     @Published var showingLibrary = false
 
+    /// A run requested from somewhere other than the Go tab — today, the Sound tab's
+    /// tempo ladder. Carries the pace that row stands for and the tracks it holds, so
+    /// starting a run from an intensity actually runs at that intensity, on that music.
+    ///
+    /// `MainTabView` watches this to switch tabs; `SessionSetupView` consumes it and
+    /// clears it, so a request applies once rather than re-arming every time the tab is
+    /// revisited.
+    struct RunRequest: Equatable {
+        let sourceName: String
+        let targetPaceSecPerKm: Double
+        let tracks: [Track]
+
+        static func == (a: RunRequest, b: RunRequest) -> Bool {
+            a.sourceName == b.sourceName
+                && a.targetPaceSecPerKm == b.targetPaceSecPerKm
+                && a.tracks.map(\.id) == b.tracks.map(\.id)
+        }
+    }
+
+    @Published var runRequest: RunRequest?
+
+    /// Ask the Go tab to open prefilled for this playlist.
+    func requestRun(from playlist: Playlist) {
+        guard let pace = playlist.suggestedPaceSecPerKm else { return }
+        runRequest = RunRequest(sourceName: playlist.name,
+                                targetPaceSecPerKm: pace,
+                                tracks: playlist.tracks)
+    }
+
     /// Routes per-track calls (play / ISRC / analyzable URL) to whichever connected
     /// service owns the track. Nil until a source is connected and enabled.
     private var router: MusicSourceRouter?
@@ -88,16 +140,34 @@ final class AppCoordinator: ObservableObject {
     func connect(_ choice: ProviderChoice) async -> Bool {
         let provider = sources.first(where: { $0.choice == choice })?.provider
             ?? makeProvider(for: choice)
+        return await connect(choice, using: provider)
+    }
 
+    /// The body of `connect`, taking the provider so a launch-time restore can reuse
+    /// the instance it already asked about rather than building a second one.
+    private func connect(_ choice: ProviderChoice,
+                         using provider: MusicProviderProtocol) async -> Bool {
         guard await provider.requestAuthorization() else { return false }
 
-        let tracks = (try? await provider.fetchLibraryTracks()) ?? []
+        // A failed fetch is reported, not swallowed. Silently substituting an empty
+        // library is how a broken connection came to look like an empty account.
+        var fetchError: String?
+        var tracks: [Track] = []
+        do {
+            tracks = try await provider.fetchLibraryTracks()
+        } catch {
+            fetchError = "Couldn't read your \(choice.rawValue) library: "
+                + error.localizedDescription
+        }
 
         // Surface why tempo may be missing, per provider.
-        var note: String?
-        if let spotify = provider as? SpotifyProvider, await spotify.bpmUnavailable() {
-            note = "Spotify doesn't expose track tempo for new apps (its audio-features "
-                + "endpoint is restricted)."
+        var note: String? = fetchError
+        if fetchError != nil {
+            // Keep the failure as the note; a tempo caveat is beside the point when the
+            // library didn't load at all.
+        } else if let spotify = provider as? SpotifyProvider, await spotify.bpmUnavailable() {
+            note = "Spotify doesn't share track tempo with new apps, so Dromo is working "
+                + "out the tempo of your songs itself. They'll start pacing runs as it does."
         } else if let apple = provider as? AppleMusicProvider {
             if apple.lastLibraryWasEmpty {
                 note = "No Apple Music library is available here (expected in the Simulator)."
@@ -137,6 +207,15 @@ final class AppCoordinator: ObservableObject {
     /// off and then removed it would reconnect later and find it connected but still
     /// out of the mix, with nothing on screen explaining why.
     func disconnect(_ choice: ProviderChoice) {
+        // Drop the stored credential too, not just the in-memory source. Now that
+        // authorizations survive relaunching, forgetting only the source would leave a
+        // usable Spotify token in the Keychain after the runner asked to remove the
+        // service — and the next connect would silently reuse it, so "Remove" would
+        // not have removed anything.
+        if let spotify = sources.first(where: { $0.choice == choice })?.provider
+            as? SpotifyProvider {
+            spotify.auth.signOut()
+        }
         sources.removeAll { $0.choice == choice }
         storeEnabled(choice, true)
         rebuildLibrary()
@@ -145,20 +224,16 @@ final class AppCoordinator: ObservableObject {
     /// Recompute the unified library, note, and router from the enabled sources.
     private func rebuildLibrary() {
         let enabled = sources.filter(\.isEnabled)
-        var merged = LibraryAggregator.merged(enabled.map(\.tracks))
-        var notes = enabled.compactMap(\.note)
+        let merged = LibraryAggregator.merged(enabled.map(\.tracks))
+        let notes = enabled.compactMap(\.note)
 
-        // Keep the app usable when the enabled sources yield no BPM-bearing tracks
-        // (Simulator, DRM-only streaming, or an untagged library) — fall back to the
-        // built-in catalog. This is the architecture's sanctioned fallback, not an
-        // error. With no sources at all the library stays empty: the session pool's
-        // own catalog-first path covers the "run before connecting" promise.
-        if merged.isEmpty, !enabled.isEmpty {
-            merged = MockMusicCatalog.tracks
-            notes.append("Using Dromo's built-in demo catalog so you can try the "
-                + "full pace → BPM → music loop.")
-        }
-
+        // The library is the runner's own music and nothing else. There was a fallback
+        // here that substituted a demo catalog whenever a connected source yielded
+        // nothing, which meant a failing integration presented as a working one stocked
+        // with songs the runner doesn't own — the failure was invisible and the music
+        // was a stranger's. An empty library is now allowed to be empty, and the UI
+        // says so. Dromo's own mixes remain a separate, labelled source (CatalogLibrary),
+        // not something silently poured into "your music".
         library = merged
         bpmNote = notes.isEmpty ? nil : notes.joined(separator: " ")
         // Aliases span ALL sources, not just enabled ones: learning attached to a
@@ -220,6 +295,12 @@ final class AppCoordinator: ObservableObject {
     /// Sign out and reset music/session state, returning to the auth screen.
     func signOut() {
         account.signOut()
+        // Revoke the music credentials with the account. Connections now outlive the
+        // process, so leaving them would hand the next person to sign in on this device
+        // the previous runner's Spotify library.
+        for source in sources {
+            (source.provider as? SpotifyProvider)?.auth.signOut()
+        }
         sources = []
         router = nil
         library = []

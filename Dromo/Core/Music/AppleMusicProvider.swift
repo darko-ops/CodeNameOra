@@ -8,9 +8,10 @@ import DromoCore
 /// the one mainstream source still exposing tempo (unlike Spotify's now-restricted
 /// audio-features endpoint, see [[spotify-bpm-restriction]]). No binary SDK needed.
 ///
-/// Caveat: `beatsPerMinute` is only populated for tracks whose metadata carries
-/// it; coverage varies by library, so tracks without a BPM are dropped.
-/// `lastLibraryHadNoBPM` lets the UI explain a thin/empty result.
+/// Caveat: `beatsPerMinute` is only populated for tracks whose metadata carries it, so
+/// coverage varies by library. Untagged tracks are still returned, carrying `bpm: 0` —
+/// tempo is needed to pace a song, not to show one — and `lastLibraryHadNoBPM` lets the
+/// UI explain why a library may not be pacing runs yet.
 final class AppleMusicProvider: MusicProviderProtocol {
 
     private let player = MPMusicPlayerController.applicationMusicPlayer
@@ -19,6 +20,12 @@ final class AppleMusicProvider: MusicProviderProtocol {
     private(set) var lastLibraryHadNoBPM = false
     /// No songs at all (e.g. the Simulator, which has no Music library).
     private(set) var lastLibraryWasEmpty = false
+
+    /// The system remembers the media-library grant, so a previous authorization is
+    /// still good on the next launch. Read without prompting.
+    var isAuthorized: Bool {
+        get async { MPMediaLibrary.authorizationStatus() == .authorized }
+    }
 
     func requestAuthorization() async -> Bool {
         let status = await withCheckedContinuation { continuation in

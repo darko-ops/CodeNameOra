@@ -77,6 +77,10 @@ final class CoordinatorEnvironmentUITests: XCTestCase {
             // way create-account's .newPassword is.
             "-dromo.accounts",
             "{\"uitest@dromo.test\" = \"\(Self.seededPasswordHash)\";}",
+            // Force the auth screen. Signing in persists a session to the app
+            // container, so without this the test only passes against a pristine
+            // install — it would find itself already signed in on the second run.
+            "-dromo.session.email", "",
         ]
         app.launch()
 

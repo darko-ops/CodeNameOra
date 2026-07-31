@@ -8,6 +8,9 @@ struct SessionSetupView: View {
     @EnvironmentObject private var coordinator: AppCoordinator
     @StateObject private var vm = SessionSetupViewModel()
     @State private var showLiveHUD = false
+    /// The playlist a run was started from, when it came in from the Sound tab. Its
+    /// tracks become the session's pool, so "run at Threshold" runs on Threshold's music.
+    @State private var runSource: AppCoordinator.RunRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,6 +21,7 @@ struct SessionSetupView: View {
                     if let note = coordinator.bpmNote {
                         bpmWarning(note)
                     }
+                    if let runSource { sourceBanner(runSource) }
                     modePicker
                     targetCard
                     if vm.mode == .pace { distanceGoalCard }
@@ -29,14 +33,48 @@ struct SessionSetupView: View {
 
             startBar
         }
+        // Consume the request and clear it, so it applies once instead of re-arming
+        // every time the tab is revisited. Handled on both appear and change: the tab
+        // may already be on screen when the request arrives, or not yet built.
+        .onAppear { consumeRunRequest() }
+        .onChange(of: coordinator.runRequest) { _ in consumeRunRequest() }
         .fullScreenCover(isPresented: $showLiveHUD) {
             LiveHUDView(vm: LiveSessionViewModel(
-                tracks: coordinator.library,
+                tracks: runSource?.tracks ?? coordinator.library,
                 targetPaceSecPerKm: vm.targetPaceSecondsPerKm,
                 targetDistanceMeters: vm.targetDistanceMeters,
                 provider: coordinator.musicProvider,
                 aliases: coordinator.recordingAliases))
         }
+    }
+
+    private func consumeRunRequest() {
+        guard let request = coordinator.runRequest else { return }
+        vm.apply(targetPaceSecondsPerKm: request.targetPaceSecPerKm)
+        runSource = request
+        coordinator.runRequest = nil
+    }
+
+    /// Says where the prefilled pace and music came from, and offers a way out — a
+    /// silently narrowed track pool would be indistinguishable from a bug.
+    private func sourceBanner(_ request: AppCoordinator.RunRequest) -> some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: "waveform")
+                .foregroundColor(.zoneSteady)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Running \(request.sourceName)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.oraTextPrimary)
+                Text("\(request.tracks.count) tracks · pace set to match")
+                    .font(.system(size: 12))
+                    .foregroundColor(.oraTextSecondary)
+            }
+            Spacer(minLength: 0)
+            Button("Use all music") { runSource = nil }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.zoneSteady)
+        }
+        .oraRuledCard(radius: 12)
     }
 
     // MARK: - Header

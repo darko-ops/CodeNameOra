@@ -61,6 +61,61 @@ final class DesignScreenshotUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
     }
 
+    /// The reworked Sound tab and the new All-tracks screen.
+    func test_captureSoundTab() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-dromo.session.email", "design@dromo.test"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Sound"].waitForExistence(timeout: 20), "Never reached the tabs")
+        app.buttons["Sound"].tap()
+        Thread.sleep(forTimeInterval: 2)
+        shoot(app, "10-sound-tab")
+
+        // Scroll to the lower sections (playlists / high energy / all tracks).
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 1)
+        shoot(app, "11-sound-tab-lower")
+
+        let allTracks = app.staticTexts["All tracks"]
+        if allTracks.waitForExistence(timeout: 3) {
+            allTracks.tap()
+            Thread.sleep(forTimeInterval: 2)
+            shoot(app, "12-all-tracks")
+        }
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// The ▶ hand-off: tapping play on a tempo row should land on Go with that pace.
+    func test_tempoRowStartsRunOnGoTab() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-dromo.session.email", "design@dromo.test"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["Sound"].waitForExistence(timeout: 20), "Never reached the tabs")
+        app.buttons["Sound"].tap()
+        Thread.sleep(forTimeInterval: 2)
+
+        // The ▶ buttons carry their pace in the accessibility label.
+        let play = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Start run at'")).firstMatch
+        guard play.waitForExistence(timeout: 5) else {
+            XCTSkip("No tempo rows — the simulator library has no tagged tracks")
+            return
+        }
+        play.tap()
+        Thread.sleep(forTimeInterval: 2)
+
+        // Landed on Go, with the source banner naming where it came from.
+        XCTAssertTrue(app.staticTexts["Set your target"].waitForExistence(timeout: 5),
+                      "▶ did not switch to the Go tab")
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'Running '")).firstMatch.exists,
+                      "Go tab did not report the run source")
+        shoot(app, "13-go-prefilled")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     /// The live HUD, reached by starting a run from session setup.
     func test_captureLiveHUD() {
         let app = XCUIApplication()

@@ -19,7 +19,17 @@ final class SpotifyProvider: MusicProviderProtocol {
         self.api = SpotifyWebAPI(auth: auth)
     }
 
+    /// Tokens live in the Keychain, so a previous sign-in survives relaunching and
+    /// reinstalling. Reported without prompting.
+    var isAuthorized: Bool {
+        get async { await auth.isAuthenticated }
+    }
+
     func requestAuthorization() async -> Bool {
+        // Already signed in — don't send the runner through the web flow again just to
+        // refresh a library. Expired access tokens are refreshed from the stored
+        // refresh token on the next request, so this stays valid over time.
+        if await auth.isAuthenticated { return true }
         do {
             try await auth.authorize()
             return true

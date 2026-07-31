@@ -42,6 +42,15 @@ struct Playlist: Identifiable {
         return "\(Int(lower))+ BPM"
     }
 
+    /// `bpmRangeLabel` for display. The lowest bucket starts at 0 so that untagged-free
+    /// matching has a lower bound, but "0–125 BPM" shows a modelling artifact to the
+    /// runner — nothing in a library sits near 0 BPM. Reads "Under 125 BPM" instead.
+    var bpmRangeDisplay: String? {
+        guard let lower = lowerBPM else { return nil }
+        if lower == 0, let upper = upperBPM { return "Under \(Int(upper)) BPM" }
+        return bpmRangeLabel
+    }
+
     func contains(_ bpm: Double) -> Bool {
         guard let lower = lowerBPM, bpm >= lower else { return false }
         if let upper = upperBPM { return bpm < upper }
@@ -55,13 +64,19 @@ enum PlaylistCatalog {
 
     /// (name, subtitle, SF Symbol, accent hex, lowerBPM, upperBPM?, targetPace sec/km).
     /// Pace rises with intensity: Warm Up 6:30/km → Sprint Finish 3:45/km.
+    ///
+    /// The accents are one ordinal ramp — cool for easy, warm for hard, at matched
+    /// lightness and chroma so the ladder reads as a single scale rather than six
+    /// unrelated labels. Each value is a token the design language already carries
+    /// (zoneWarmUp, oraSuccess, oraWarning, zonePeak, oraDestructive), so there are no
+    /// new constants to keep in step.
     private static let definitions: [(String, String, String, String, Double, Double?, Double)] = [
-        ("Warm Up",       "Ease into the run",   "figure.cooldown", "#4FC3F7", 0,   125,  390),
-        ("Easy Miles",    "Conversational pace", "figure.walk",     "#66BB6A", 125, 140,  360),
-        ("Tempo",         "Comfortably hard",    "figure.run",      "#9CCC65", 140, 152,  315),
-        ("Threshold",     "Race-pace effort",    "speedometer",     "#FFCA28", 152, 164,  285),
-        ("Intervals",     "Hard repeats",        "bolt.fill",       "#FF7043", 164, 176,  255),
-        ("Sprint Finish", "All-out kick",        "flame.fill",      "#EF5350", 176, nil,  225)
+        ("Warm Up",       "Ease into the run",   "figure.cooldown", "#8FA9C4", 0,   125,  390),
+        ("Easy Miles",    "Conversational pace", "figure.walk",     "#85AFC0", 125, 140,  360),
+        ("Tempo",         "Comfortably hard",    "figure.run",      "#7FB09A", 140, 152,  315),
+        ("Threshold",     "Race-pace effort",    "speedometer",     "#C9A96E", 152, 164,  285),
+        ("Intervals",     "Hard repeats",        "bolt.fill",       "#C98A6E", 164, 176,  255),
+        ("Sprint Finish", "All-out kick",        "flame.fill",      "#C96E6E", 176, nil,  225)
     ]
 
     /// Builds playlists from a library, keeping only buckets that have tracks.
@@ -91,6 +106,43 @@ enum PlaylistCatalog {
                 return true
             }
             .sorted { $0.bpm < $1.bpm }
+    }
+
+    /// One tempo bucket, independent of whether the library has tracks in it — so a
+    /// filter row can offer every window while `playlists(from:)` only yields the
+    /// populated ones.
+    struct Bucket: Identifiable, Equatable {
+        let name: String
+        let accentHex: String
+        let lower: Double
+        let upper: Double?
+
+        var id: String { name }
+        var accent: Color { Color(hex: accentHex) }
+
+        /// Short form for a filter chip: "<125", "125–140", "176+".
+        var chipLabel: String {
+            if lower == 0, let upper { return "<\(Int(upper))" }
+            if let upper { return "\(Int(lower))–\(Int(upper))" }
+            return "\(Int(lower))+"
+        }
+
+        func contains(_ bpm: Double) -> Bool {
+            guard bpm > 0, bpm >= lower else { return false }   // untagged never matches
+            if let upper { return bpm < upper }
+            return true
+        }
+    }
+
+    /// Every tempo window, in ramp order. The single source of the ranges — filter chips
+    /// and BPM tinting read this rather than restating the numbers.
+    static var buckets: [Bucket] {
+        definitions.map { Bucket(name: $0.0, accentHex: $0.3, lower: $0.4, upper: $0.5) }
+    }
+
+    /// The ramp colour for a BPM, for tinting a readout by its bucket. Nil when untagged.
+    static func accent(forBPM bpm: Double) -> Color? {
+        buckets.first { $0.contains(bpm) }?.accent
     }
 
     /// The playlist a given BPM falls into — used for a track's "best for" zone.

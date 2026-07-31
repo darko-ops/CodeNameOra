@@ -50,6 +50,15 @@ enum PaceMath {
         return String(format: "%d:%02d/%@", total / 60, total % 60, metric ? "km" : "mi")
     }
 
+    /// Bare "m:ss" for a pace, without the unit — for readouts that label the unit
+    /// separately, so it isn't printed twice.
+    static func paceValue(secondsPerKm: Double, metric: Bool) -> String {
+        guard secondsPerKm > 0 else { return "--:--" }
+        let perUnit = metric ? secondsPerKm : secondsPerKm * (metersPerMile / 1_000)
+        let total = Int(perUnit.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
     /// Bare "m:ss" (no unit suffix).
     static func clock(_ seconds: Double) -> String {
         let t = max(0, Int(seconds))

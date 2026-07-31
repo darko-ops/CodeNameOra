@@ -22,8 +22,17 @@ actor SpotifyWebAPI {
 
     // MARK: - Library
 
-    /// Fetches up to `maxTracks` saved songs and enriches them with BPM.
-    /// Tracks without a usable BPM are dropped (the sequencer needs tempo).
+    /// Fetches up to `maxTracks` saved songs, with BPM attached where Spotify will
+    /// give it.
+    ///
+    /// Tracks with no tempo are **kept**, carrying `bpm: 0` ("unknown"), the same way
+    /// `AppleMusicProvider` returns an untagged library. Dropping them instead meant
+    /// that once Spotify restricted `/v1/audio-features` — which 403s for new apps, so
+    /// `bpm(forIDs:)` legitimately returns nothing — every saved track failed the BPM
+    /// guard and the runner's entire library vanished. Tempo is filled in afterwards by
+    /// `LibraryEnrichmentPass`, which exists precisely to resolve `bpm <= 0` tracks
+    /// through the Global Track Table and GetSongBPM. Tempo is required to *pace* a
+    /// song, not to *show* one.
     func savedTracks(maxTracks: Int = 200) async throws -> [Track] {
         var dtos: [SpotifyTrackDTO] = []
         var url: URL? = SpotifyConfig.apiBase
@@ -38,14 +47,23 @@ actor SpotifyWebAPI {
 
         let ids = dtos.compactMap(\.id)
         let bpmByID = await bpm(forIDs: ids)
+        return Self.tracks(from: dtos, bpmByID: bpmByID)
+    }
 
-        return dtos.compactMap { dto -> Track? in
-            guard let id = dto.id, let bpm = bpmByID[id], bpm > 0 else { return nil }
+    /// Maps saved-track DTOs to `Track`s. Pure, so the "an untagged library is still a
+    /// library" rule can be tested without a network round-trip — it is the rule that
+    /// broke, and it broke silently.
+    static func tracks(from dtos: [SpotifyTrackDTO],
+                       bpmByID: [String: Double]) -> [Track] {
+        dtos.compactMap { dto -> Track? in
+            // Only an id is required — that's what makes a track addressable. Tempo is
+            // optional here, and 0 means "not known yet", not "unusable".
+            guard let id = dto.id else { return nil }
             return Track(
                 id: id,
                 title: dto.name,
                 artist: dto.primaryArtist,
-                bpm: bpm,
+                bpm: bpmByID[id] ?? 0,
                 energyLevel: 0.5,
                 durationSeconds: (dto.duration_ms ?? 0) / 1000,
                 provider: .spotify
