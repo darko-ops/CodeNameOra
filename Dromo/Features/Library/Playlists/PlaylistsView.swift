@@ -4,8 +4,8 @@ import DromoCore
 /// The Sound tab — the music home for the connected service.
 ///
 /// Ordered by what the product is for: browsing by intensity comes first, because
-/// matching music to effort is the reason the app exists. The tempo buckets are a ramp
-/// (Warm Up → Sprint Finish), so they're a one-column ladder rather than a grid — a grid
+/// matching music to effort is the reason the app exists. The five training zones are a
+/// ramp (recovery → VO2 max), so they're a one-column ladder rather than a grid — a grid
 /// reads left-right-down, which makes an ordered scale look arbitrary.
 ///
 /// Each ladder row has two targets: the row opens the playlist, ▶ starts a run at that
@@ -31,7 +31,7 @@ struct PlaylistsView: View {
                     if let p = coordinator.enrichmentProgress, p.done < p.total {
                         enrichmentBanner(p)
                     }
-                    tempoLadder
+                    zoneLadder
                     yourPlaylistsSection
                     highEnergySection
                     allTracksCard
@@ -89,33 +89,33 @@ struct PlaylistsView: View {
         }
     }
 
-    // MARK: - Run by tempo (the ladder)
+    // MARK: - Run by zone (the ladder)
 
-    private var tempoLadder: some View {
+    private var zoneLadder: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             VStack(alignment: .leading, spacing: 4) {
-                OraLabel("Run by tempo")
-                Text("Pick an intensity — Dromo sets your target pace to match.")
+                OraLabel("Run by zone")
+                Text("Pick a training zone — Dromo sets your target pace to match.")
                     .font(.system(size: 12))
                     .foregroundColor(.oraTextSecondary)
             }
             .padding(.horizontal, Spacing.screen)
 
-            if vm.tempoPlaylists.isEmpty {
+            if vm.zonePlaylists.isEmpty {
                 // Two different nothings: no music at all, versus music that has no
                 // tempo yet. Saying "connect a library" to someone who just connected
                 // one reads as the app not noticing.
                 Text(vm.libraryTracks.isEmpty
-                     ? "Connect a music service and your songs will sort themselves by tempo."
+                     ? "Connect a music service and your songs will sort themselves into zones."
                      : "Working out the tempo of your songs — they'll appear here as Dromo tags them.")
                     .font(.system(size: 13))
                     .foregroundColor(.oraTextMuted)
                     .padding(.horizontal, Spacing.screen)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(vm.tempoPlaylists.enumerated()), id: \.element.id) { i, playlist in
-                        tempoRow(playlist)
-                        if i < vm.tempoPlaylists.count - 1 {
+                    ForEach(Array(vm.zonePlaylists.enumerated()), id: \.element.id) { i, playlist in
+                        zoneRow(playlist)
+                        if i < vm.zonePlaylists.count - 1 {
                             Divider()
                                 .overlay(Color.oraSurfaceElevated)
                                 .padding(.leading, Spacing.md + 3 + Spacing.md)
@@ -133,7 +133,7 @@ struct PlaylistsView: View {
         }
     }
 
-    private func tempoRow(_ playlist: Playlist) -> some View {
+    private func zoneRow(_ playlist: Playlist) -> some View {
         ZStack {
             // Behind the content, so ▶ keeps its own hit region. Same pattern the
             // sessions list uses.

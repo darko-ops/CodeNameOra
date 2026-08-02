@@ -1,8 +1,8 @@
 import SwiftUI
 import DromoCore
 
-/// Backs the Sound tab. Organizes the library into browsable sections — the tempo
-/// ladder, your (user-created) playlists, a high-energy shelf — and holds the search and
+/// Backs the Sound tab. Organizes the library into browsable sections — the
+/// zone ladder, your (user-created) playlists, a high-energy shelf — and holds the search and
 /// BPM-filter state that `AllTracksView` browses the full library through.
 ///
 /// Everything here is the runner's own music. Nothing is substituted when a section
@@ -15,7 +15,7 @@ final class PlaylistsViewModel: ObservableObject {
     /// Named for what it measures: the provider gives us no play counts, so the old
     /// `popular` was never popularity.
     @Published private(set) var highEnergy: [Track] = []
-    @Published private(set) var tempoPlaylists: [Playlist] = []
+    @Published private(set) var zonePlaylists: [Playlist] = []
 
     // MARK: - Browse state (All tracks)
 
@@ -26,8 +26,8 @@ final class PlaylistsViewModel: ObservableObject {
         didSet { scheduleQueryDebounce() }
     }
     @Published private(set) var activeQuery: String = ""
-    /// The selected tempo window, or nil for "All BPM".
-    @Published var bpmFilter: PlaylistCatalog.Bucket?
+    /// The selected zone's BPM window, or nil for "All BPM".
+    @Published var bpmFilter: PlaylistCatalog.Zone?
     @Published var sort: TrackSort = .bpmAscending
 
     enum TrackSort: String, CaseIterable, Identifiable {
@@ -50,7 +50,7 @@ final class PlaylistsViewModel: ObservableObject {
         let source = library
         libraryTracks = source
         libraryByID = Dictionary(source.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        tempoPlaylists = PlaylistCatalog.playlists(from: source)
+        zonePlaylists = PlaylistCatalog.playlists(from: source)
         highEnergy = Array(source.sorted { $0.energyLevel > $1.energyLevel }.prefix(15))
         await reloadUserPlaylists()
     }
@@ -69,8 +69,8 @@ final class PlaylistsViewModel: ObservableObject {
     var filteredTracks: [Track] {
         var result = libraryTracks
 
-        if let bucket = bpmFilter {
-            result = result.filter { bucket.contains($0.bpm) }
+        if let zone = bpmFilter {
+            result = result.filter { zone.contains($0.bpm) }
         }
 
         let q = activeQuery.trimmingCharacters(in: .whitespaces)
@@ -148,7 +148,7 @@ final class PlaylistsViewModel: ObservableObject {
             let tracks = record.trackIDs.compactMap { libraryByID[$0] }
             // The accent is vestigial: these rows are a neutral list now and nothing
             // reads it. Kept on-token rather than removed, since `Playlist` is shared
-            // with the tempo ladder, where the accent still does work.
+            // with the zone ladder, where the accent still does work.
             return Playlist(
                 id: record.id, name: record.name, subtitle: "For your sessions",
                 systemImage: "music.note.list", accentHex: "#6EA8C9", tracks: tracks)

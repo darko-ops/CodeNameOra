@@ -35,7 +35,7 @@ struct AllTracksView: View {
 
     // MARK: - BPM filter chips
 
-    /// Reads its windows from `PlaylistCatalog`, so the chips and the tempo ladder are
+    /// Reads its windows from `PlaylistCatalog`, so the chips and the zone ladder are
     /// visibly the same taxonomy and the ranges are stated in exactly one place.
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -44,11 +44,11 @@ struct AllTracksView: View {
                      isSelected: vm.bpmFilter == nil) {
                     vm.bpmFilter = nil
                 }
-                ForEach(PlaylistCatalog.buckets) { bucket in
-                    chip(label: bucket.chipLabel, tint: bucket.accent,
-                         isSelected: vm.bpmFilter == bucket) {
+                ForEach(PlaylistCatalog.zones) { zone in
+                    chip(label: zone.chipLabel, tint: zone.accent,
+                         isSelected: vm.bpmFilter == zone) {
                         // Single-select, and tapping the active chip clears it.
-                        vm.bpmFilter = (vm.bpmFilter == bucket) ? nil : bucket
+                        vm.bpmFilter = (vm.bpmFilter == zone) ? nil : zone
                     }
                 }
             }

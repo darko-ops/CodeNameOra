@@ -63,20 +63,26 @@ struct Playlist: Identifiable {
 enum PlaylistCatalog {
 
     /// (name, subtitle, SF Symbol, accent hex, lowerBPM, upperBPM?, targetPace sec/km).
-    /// Pace rises with intensity: Warm Up 6:30/km → Sprint Finish 3:45/km.
+    ///
+    /// The five training zones runners already think in — recovery through VO2 max —
+    /// rather than an arbitrary set of tempo buckets. Zone 2 is where most easy volume
+    /// lives and zone 4 is threshold, so the names carry meaning to anyone following a
+    /// plan, and the pace attached to each is what that effort actually asks for.
+    ///
+    /// Pace rises with intensity: zone 1 at 6:30/km → zone 5 at 3:45/km. The BPM
+    /// windows are contiguous and cover the whole range, so every tagged track lands in
+    /// exactly one zone.
     ///
     /// The accents are one ordinal ramp — cool for easy, warm for hard, at matched
-    /// lightness and chroma so the ladder reads as a single scale rather than six
-    /// unrelated labels. Each value is a token the design language already carries
-    /// (zoneWarmUp, oraSuccess, oraWarning, zonePeak, oraDestructive), so there are no
-    /// new constants to keep in step.
+    /// lightness and chroma so the ladder reads as a single scale rather than five
+    /// unrelated labels. Each value is a token the design language already carries, so
+    /// there are no new constants to keep in step.
     private static let definitions: [(String, String, String, String, Double, Double?, Double)] = [
-        ("Warm Up",       "Ease into the run",   "figure.cooldown", "#8FA9C4", 0,   125,  390),
-        ("Easy Miles",    "Conversational pace", "figure.walk",     "#85AFC0", 125, 140,  360),
-        ("Tempo",         "Comfortably hard",    "figure.run",      "#7FB09A", 140, 152,  315),
-        ("Threshold",     "Race-pace effort",    "speedometer",     "#C9A96E", 152, 164,  285),
-        ("Intervals",     "Hard repeats",        "bolt.fill",       "#C98A6E", 164, 176,  255),
-        ("Sprint Finish", "All-out kick",        "flame.fill",      "#C96E6E", 176, nil,  225)
+        ("Zone 1 · Recovery",  "Easy shakeout",        "figure.cooldown", "#8FA9C4", 0,   130,  390),
+        ("Zone 2 · Easy",      "Conversational base",  "figure.walk",     "#85AFC0", 130, 145,  345),
+        ("Zone 3 · Steady",    "Comfortably hard",     "figure.run",      "#7FB09A", 145, 160,  300),
+        ("Zone 4 · Threshold", "Race-pace effort",     "speedometer",     "#C9A96E", 160, 172,  265),
+        ("Zone 5 · VO2 Max",   "Hard intervals",       "flame.fill",      "#C96E6E", 172, nil,  225)
     ]
 
     /// Builds playlists from a library, keeping only buckets that have tracks.
@@ -108,10 +114,10 @@ enum PlaylistCatalog {
             .sorted { $0.bpm < $1.bpm }
     }
 
-    /// One tempo bucket, independent of whether the library has tracks in it — so a
-    /// filter row can offer every window while `playlists(from:)` only yields the
+    /// One training zone, independent of whether the library has tracks in it — so a
+    /// filter row can offer every zone while `playlists(from:)` only yields the
     /// populated ones.
-    struct Bucket: Identifiable, Equatable {
+    struct Zone: Identifiable, Equatable {
         let name: String
         let accentHex: String
         let lower: Double
@@ -120,7 +126,7 @@ enum PlaylistCatalog {
         var id: String { name }
         var accent: Color { Color(hex: accentHex) }
 
-        /// Short form for a filter chip: "<125", "125–140", "176+".
+        /// Short form for a filter chip: "<130", "130–145", "172+".
         var chipLabel: String {
             if lower == 0, let upper { return "<\(Int(upper))" }
             if let upper { return "\(Int(lower))–\(Int(upper))" }
@@ -134,15 +140,15 @@ enum PlaylistCatalog {
         }
     }
 
-    /// Every tempo window, in ramp order. The single source of the ranges — filter chips
-    /// and BPM tinting read this rather than restating the numbers.
-    static var buckets: [Bucket] {
-        definitions.map { Bucket(name: $0.0, accentHex: $0.3, lower: $0.4, upper: $0.5) }
+    /// Every zone, in order. The single source of the BPM windows — filter chips and
+    /// BPM tinting read this rather than restating the numbers.
+    static var zones: [Zone] {
+        definitions.map { Zone(name: $0.0, accentHex: $0.3, lower: $0.4, upper: $0.5) }
     }
 
-    /// The ramp colour for a BPM, for tinting a readout by its bucket. Nil when untagged.
+    /// The ramp colour for a BPM, for tinting a readout by its zone. Nil when untagged.
     static func accent(forBPM bpm: Double) -> Color? {
-        buckets.first { $0.contains(bpm) }?.accent
+        zones.first { $0.contains(bpm) }?.accent
     }
 
     /// The playlist a given BPM falls into — used for a track's "best for" zone.
