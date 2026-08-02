@@ -404,6 +404,16 @@ html.no-intro .page { animation: none; }
 }
 .footer .wordmark { font-size: 1.05rem; }
 .footer__legal { color: var(--text-3); font-size: 0.88rem; margin: 0; }
+/* Attribution required by the GetSongBPM API terms — a real link, not styled away:
+   they suspend keys for missing backlinks, and a link nobody can see isn't one. */
+.footer__link {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--border-strong);
+  transition: color 0.2s ease;
+}
+.footer__link:hover { color: var(--text); }
 
 /* ---- Wave mark intro overlay ---- */
 .intro {
