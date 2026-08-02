@@ -10,6 +10,43 @@ struct GetSongBPMClient: BPMLookup {
     let apiKey: String
     var session: URLSession = .shared
 
+    /// The last HTTP status the API answered with, or nil if the request never got
+    /// that far.
+    ///
+    /// `BPMLookup` can only answer `Double?`, so a rejected key, a Cloudflare
+    /// challenge and "we don't know that song" all collapse into the same nil — and the
+    /// first two are worth knowing about, because no amount of waiting fixes them. The
+    /// service records the last outcome so a misconfiguration can be told apart from a
+    /// miss instead of being retried forever in silence.
+    final class Diagnostics: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _lastStatus: Int?
+        private var _lastBlockedAt: Date?
+
+        var lastStatus: Int? {
+            lock.lock(); defer { lock.unlock() }
+            return _lastStatus
+        }
+
+        /// True when the API refused us rather than simply not knowing the song —
+        /// 401/403 (key rejected or bot-challenged) or 429 (over the daily quota).
+        var isRefusingRequests: Bool {
+            lock.lock(); defer { lock.unlock() }
+            guard let status = _lastStatus else { return false }
+            return status == 401 || status == 403 || status == 429
+        }
+
+        func record(status: Int?) {
+            lock.lock(); defer { lock.unlock() }
+            _lastStatus = status
+            if let status, status == 401 || status == 403 || status == 429 {
+                _lastBlockedAt = Date()
+            }
+        }
+    }
+
+    static let diagnostics = Diagnostics()
+
     func bpm(title: String, artist: String) async -> Double? {
         guard !apiKey.isEmpty else { return nil }
         let lookup = "\(artist) \(title)"
@@ -18,8 +55,13 @@ struct GetSongBPMClient: BPMLookup {
                 "https://api.getsongbpm.com/search/?api_key=\(apiKey)&type=both&lookup=\(encoded)")
         else { return nil }
 
-        guard let (data, response) = try? await session.data(from: url),
-              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        guard let (data, response) = try? await session.data(from: url) else {
+            Self.diagnostics.record(status: nil)
+            return nil
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode
+        Self.diagnostics.record(status: status)
+        guard status == 200 else { return nil }
         return Self.parseTempo(from: data)
     }
 

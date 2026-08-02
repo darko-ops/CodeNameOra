@@ -38,8 +38,21 @@ struct TempoSources: Equatable {
     /// What to tell the runner when their library can't be tagged. Nil when at least one
     /// source can answer — a slow lookup needs no explanation, only an impossible one does.
     var unavailableReason: String? {
-        guard !canLookUpTempo else { return nil }
-        return "Tempo lookup isn't set up in this build, so songs without a BPM tag "
-            + "can't be matched to your pace yet."
+        if !canLookUpTempo {
+            return "Tempo lookup isn't set up in this build, so songs without a BPM tag "
+                + "can't be matched to your pace yet."
+        }
+        // Configured but being turned away. Distinct from "still working": a rejected
+        // key or an exhausted quota will not resolve by waiting, so it must not look
+        // like a lookup still in progress.
+        if hasGetSongBPM, !hasTrackTable,
+           GetSongBPMClient.diagnostics.isRefusingRequests {
+            let status = GetSongBPMClient.diagnostics.lastStatus ?? 0
+            return status == 429
+                ? "Today's tempo lookups are used up — tagging picks up again tomorrow."
+                : "Tempo lookups are being refused (error \(status)). Check the "
+                    + "GetSongBPM key and that the app's backlink is in place."
+        }
+        return nil
     }
 }

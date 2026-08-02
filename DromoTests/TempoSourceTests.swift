@@ -98,3 +98,68 @@ final class GetSongBPMParsingTests: XCTestCase {
         XCTAssertNil(bpm)
     }
 }
+
+/// Cover for telling "the API refused us" apart from "it doesn't know that song".
+///
+/// `BPMLookup` can only answer `Double?`, so a rejected key, a bot-challenge and a
+/// genuine miss all collapse to nil. The first two never resolve by waiting, so they
+/// have to be distinguishable — otherwise the retry ledger grinds against a wall while
+/// the coverage card implies a lookup still in progress.
+final class GetSongBPMDiagnosticsTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        GetSongBPMClient.diagnostics.record(status: nil)
+    }
+
+    func test_aMissIsNotARefusal() {
+        GetSongBPMClient.diagnostics.record(status: 200)
+
+        XCTAssertFalse(GetSongBPMClient.diagnostics.isRefusingRequests)
+    }
+
+    /// What this environment actually returns — a Cloudflare challenge.
+    func test_forbiddenIsARefusal() {
+        GetSongBPMClient.diagnostics.record(status: 403)
+
+        XCTAssertTrue(GetSongBPMClient.diagnostics.isRefusingRequests)
+    }
+
+    func test_quotaExhaustedIsARefusal() {
+        GetSongBPMClient.diagnostics.record(status: 429)
+
+        XCTAssertTrue(GetSongBPMClient.diagnostics.isRefusingRequests)
+    }
+
+    /// A refusal is reported even though a source is configured — "set up" and
+    /// "working" are different claims.
+    func test_configuredButRefusedStillExplainsItself() {
+        GetSongBPMClient.diagnostics.record(status: 403)
+        let sources = TempoSources.current(
+            getSongBPMKey: "a-real-key", spotifyClientID: "", spotifyClientSecret: "",
+            trackTableConfigured: false)
+
+        XCTAssertTrue(sources.canLookUpTempo)
+        XCTAssertNotNil(sources.unavailableReason,
+                        "Being turned away must not read as still working")
+    }
+
+    func test_quotaMessageSaysItComesBack() {
+        GetSongBPMClient.diagnostics.record(status: 429)
+        let sources = TempoSources.current(
+            getSongBPMKey: "a-real-key", spotifyClientID: "", spotifyClientSecret: "",
+            trackTableConfigured: false)
+
+        XCTAssertEqual(sources.unavailableReason?.contains("tomorrow"), true)
+    }
+
+    /// A healthy lookup says nothing at all.
+    func test_workingLookupIsSilent() {
+        GetSongBPMClient.diagnostics.record(status: 200)
+        let sources = TempoSources.current(
+            getSongBPMKey: "a-real-key", spotifyClientID: "", spotifyClientSecret: "",
+            trackTableConfigured: false)
+
+        XCTAssertNil(sources.unavailableReason)
+    }
+}
