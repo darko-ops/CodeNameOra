@@ -47,6 +47,14 @@ struct RootView: View {
                 withAnimation(.easeOut(duration: 1.1)) { revealed = true }
             }
         }
+        // Browsing playback routes through the same object the run loop uses, so a
+        // Spotify track plays on Spotify. Re-set whenever the connected services change:
+        // the router is rebuilt each time, and a stale one would send tracks to a
+        // service that is no longer in the mix.
+        .onAppear { nowPlaying.router = coordinator.musicProvider }
+        .onChange(of: coordinator.sources.map(\.id)) { _ in
+            nowPlaying.router = coordinator.musicProvider
+        }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $coordinator.showingLibrary) {
             LibraryView()

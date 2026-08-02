@@ -48,3 +48,24 @@ struct SpotifyAudioFeaturesBatch: Codable {
         let energy: Double?
     }
 }
+
+/// `GET /me/player/devices` — where the runner's Spotify can play.
+///
+/// Needed because `/me/player/play` targets an active device, and a Spotify app idling
+/// in the background is available but not active.
+struct SpotifyDevicesResponse: Codable {
+    let devices: [SpotifyDevice]
+}
+
+struct SpotifyDevice: Codable {
+    let id: String?
+    let name: String
+    let is_active: Bool
+    let type: String
+}
+
+/// `GET /me` — only the plan is read. "premium" is the one value that permits
+/// playback control; free accounts can still expose their saved library.
+struct SpotifyProfile: Codable {
+    let product: String?
+}

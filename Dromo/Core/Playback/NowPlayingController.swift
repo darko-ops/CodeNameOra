@@ -5,9 +5,16 @@ import UIKit
 import DromoCore
 
 /// Standalone music player for browsing (separate from the live-run loop). Plays a
-/// queue of tracks via the system music player, tracks elapsed/duration for a
-/// scrubber, and supports skip forward / back. Shared app-wide as an environment
-/// object so a mini-player + Now Playing screen can drive it from anywhere.
+/// queue of tracks, tracks elapsed/duration for a scrubber, and supports skip forward /
+/// back. Shared app-wide as an environment object so a mini-player + Now Playing screen
+/// can drive it from anywhere.
+///
+/// Playback is routed by the track's own service. The system music player
+/// (`MPMusicPlayerController`) can only queue items from the local media library, so a
+/// Spotify track goes out through `MusicSourceRouter` to the Spotify provider instead —
+/// the same routing the live-run loop already used. Browsing didn't, and because Spotify
+/// ids aren't numeric they silently fell out of the queue while the tapped index stayed
+/// put, so choosing a Spotify song played whichever Apple Music song slid into its place.
 @MainActor
 final class NowPlayingController: ObservableObject {
     @Published private(set) var queue: [Track] = []
@@ -26,6 +33,20 @@ final class NowPlayingController: ObservableObject {
     @Published private(set) var repeatMode: RepeatMode = .off
 
     var current: Track? { queue.indices.contains(index) ? queue[index] : nil }
+
+    /// Why the last play attempt didn't produce sound. Surfaced rather than swallowed:
+    /// Spotify playback needs the Spotify app and an active device, and silence with no
+    /// explanation is indistinguishable from a broken app.
+    @Published var playbackError: String?
+
+    /// Routes a track to whichever service owns it. Set by `RootView` from the
+    /// coordinator; nil until a service is connected.
+    var router: MusicProviderProtocol?
+
+    /// Which engine is driving the current queue. The system player's clock is
+    /// meaningless for a track it isn't playing.
+    private enum Engine { case systemLibrary, external }
+    private var engine: Engine = .systemLibrary
 
     private let player = MPMusicPlayerController.applicationMusicPlayer
     private var timer: Timer?
@@ -58,28 +79,33 @@ final class NowPlayingController: ObservableObject {
     /// Play `tracks` as a queue, starting at `startAt`, and present Now Playing. When
     /// shuffle is on, the queue order itself is shuffled (so Up Next matches playback).
     func play(tracks: [Track], startAt startIndex: Int) {
-        originalOrder = tracks
         let start = max(0, min(startIndex, tracks.count - 1))
-        let seed = tracks.indices.contains(start) ? tracks[start] : nil
+        guard let chosen = tracks.indices.contains(start) ? tracks[start] : nil else { return }
+        playbackError = nil
 
-        // In order = play from the tapped track in list order. Any other mode reorders
-        // the rest around the seed (pinned first).
+        // The queue is narrowed to the chosen track's own service. One system queue
+        // can't hold both a library item and a Spotify stream, and mixing them is what
+        // let the index drift onto the wrong song — so "up next" follows the service you
+        // picked from rather than quietly skipping everything it can't play.
+        let sameService = tracks.filter { $0.provider == chosen.provider }
+        originalOrder = sameService
+
         if queueOrder == .inOrder {
-            queue = tracks
-            index = start
+            queue = sameService
+            index = sameService.firstIndex { $0.id == chosen.id } ?? 0
         } else {
-            queue = QueueOrganizer.organize(tracks, order: queueOrder, seed: seed,
+            queue = QueueOrganizer.organize(sameService, order: queueOrder, seed: chosen,
                                             preferences: preferences,
                                             shuffleSeed: UInt64.random(in: .min ... .max))
-            index = 0
+            index = queue.firstIndex { $0.id == chosen.id } ?? 0
         }
-        let items = mediaItems(for: queue)
-        guard !items.isEmpty else { return }   // mock/Spotify ids aren't library items
-        try? AVAudioSession.sharedInstance().setActive(true)
-        player.shuffleMode = .off                // we own the shuffle order
-        player.setQueue(with: MPMediaItemCollection(items: items))
-        player.nowPlayingItem = items.indices.contains(index) ? items[index] : items.first
-        player.play()
+
+        if playsThroughSystemLibrary(chosen) {
+            startSystemLibraryPlayback()
+        } else {
+            startExternalPlayback(chosen)
+        }
+
         duration = Double(current?.durationSeconds ?? 0)
         elapsed = 0
         artwork = currentArtworkImage()
@@ -91,11 +117,76 @@ final class NowPlayingController: ObservableObject {
         }
     }
 
+    /// Only tracks the local media library can actually resolve go to the system player.
+    /// Media-library ids are numeric `persistentID`s; Spotify's are base-62 strings, so
+    /// the id itself is the discriminator, with the provider as the intent.
+    ///
+    /// Internal rather than private so the routing decision — the thing that was wrong —
+    /// can be asserted without a device that has both services installed.
+    func playsThroughSystemLibrary(_ track: Track) -> Bool {
+        track.provider == .appleMusic && UInt64(track.id) != nil
+    }
+
+    private func startSystemLibraryPlayback() {
+        engine = .systemLibrary
+        let items = mediaItems(for: queue)
+        // Index against the resolved items by id rather than by position: an unresolvable
+        // track shifts everything after it, which is precisely the drift that played the
+        // wrong song.
+        guard let chosen = current,
+              let itemIndex = items.firstIndex(where: { String($0.persistentID) == chosen.id })
+        else {
+            playbackError = "That song isn't available in your library on this device."
+            return
+        }
+        try? AVAudioSession.sharedInstance().setActive(true)
+        player.shuffleMode = .off                // we own the shuffle order
+        player.setQueue(with: MPMediaItemCollection(items: items))
+        player.nowPlayingItem = items[itemIndex]
+        player.play()
+    }
+
+    /// Hands the track to the service that owns it (today: Spotify, via App Remote or
+    /// the Web API). Advancing the queue is driven here rather than by the system
+    /// player, which isn't involved.
+    private func startExternalPlayback(_ track: Track) {
+        engine = .external
+        player.stop()
+        guard let router else {
+            playbackError = "Connect \(track.provider.displayName) to play this song."
+            return
+        }
+        isPlaying = true
+        Task {
+            do {
+                try await router.play(track: track)
+            } catch {
+                isPlaying = false
+                // The provider's own message says what to do about it (no active
+                // device, not Premium, not signed in); a generic one would throw that
+                // away and leave the runner guessing.
+                playbackError = error.localizedDescription
+            }
+        }
+    }
+
     func togglePlayPause() {
+        guard engine == .systemLibrary else {
+            // The external service owns transport; reflect intent and let the next
+            // play() call re-assert it rather than pretending to pause someone else.
+            isPlaying.toggle()
+            return
+        }
         player.playbackState == .playing ? player.pause() : player.play()
     }
 
-    func next() { player.skipToNextItem() }
+    func next() {
+        guard engine == .systemLibrary else {
+            advanceExternal(by: 1)
+            return
+        }
+        player.skipToNextItem()
+    }
 
     /// Jump to a specific position in the current queue (tapped from Up Next).
     func jump(to queueIndex: Int) {
@@ -147,11 +238,23 @@ final class NowPlayingController: ObservableObject {
     }
 
     func previous() {
+        guard engine == .systemLibrary else {
+            advanceExternal(by: -1)
+            return
+        }
         if player.currentPlaybackTime > 3 { player.skipToBeginning() }   // restart, then prev
         else { player.skipToPreviousItem() }
     }
 
+    /// Step the queue ourselves when the audio is coming from another app.
+    private func advanceExternal(by offset: Int) {
+        let next = index + offset
+        guard queue.indices.contains(next) else { return }
+        play(tracks: queue, startAt: next)
+    }
+
     func seek(to seconds: Double) {
+        guard engine == .systemLibrary else { return }   // no scrub handle on a remote app
         player.currentPlaybackTime = seconds
         elapsed = seconds
     }
@@ -174,6 +277,10 @@ final class NowPlayingController: ObservableObject {
     }
 
     private func tick() {
+        // The system player's clock describes whatever IT is playing. While another
+        // service holds the audio that's a different song, so reading it would show a
+        // scrubber advancing through the wrong track.
+        guard engine == .systemLibrary else { return }
         elapsed = player.currentPlaybackTime
         if duration <= 0 { duration = player.nowPlayingItem?.playbackDuration ?? 0 }
         isPlaying = player.playbackState == .playing

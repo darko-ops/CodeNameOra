@@ -63,3 +63,43 @@ final class SpotifyLibraryMappingTests: XCTestCase {
         XCTAssertEqual(merged.first?.bpm, 0)
     }
 }
+
+/// Cover for choosing where Spotify should play.
+///
+/// Without the App Remote SDK, playback goes through `/me/player/play`, which only
+/// talks to a device it has been given — with none it answers 404 NO_ACTIVE_DEVICE,
+/// which is what "I tap a song and nothing happens" looks like. A Spotify app idling in
+/// the background is listed but not active, so it has to be found and named.
+final class SpotifyDeviceSelectionTests: XCTestCase {
+
+    private func device(_ id: String?, _ name: String, active: Bool) -> SpotifyDevice {
+        SpotifyDevice(id: id, name: name, is_active: active, type: "Smartphone")
+    }
+
+    func test_prefersTheActiveDevice() {
+        let devices = [device("a", "Laptop", active: false),
+                       device("b", "Phone", active: true)]
+
+        XCTAssertEqual(SpotifyWebAPI.preferredDevice(from: devices)?.id, "b")
+    }
+
+    /// The case that was failing: Spotify is installed and listed, just not playing.
+    func test_fallsBackToAnIdleDevice() {
+        let devices = [device("a", "Phone", active: false)]
+
+        XCTAssertEqual(SpotifyWebAPI.preferredDevice(from: devices)?.id, "a",
+                       "An idle app can still be told to start")
+    }
+
+    func test_skipsDevicesWithNoID() {
+        let devices = [device(nil, "Restricted", active: true),
+                       device("b", "Phone", active: false)]
+
+        XCTAssertEqual(SpotifyWebAPI.preferredDevice(from: devices)?.id, "b",
+                       "A device with no id cannot be targeted")
+    }
+
+    func test_noDevicesMeansNowhereToPlay() {
+        XCTAssertNil(SpotifyWebAPI.preferredDevice(from: []))
+    }
+}

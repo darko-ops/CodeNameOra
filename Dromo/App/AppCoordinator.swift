@@ -69,11 +69,37 @@ final class AppCoordinator: ObservableObject {
         isRestoringSources = true
         defer { isRestoringSources = false }
 
-        for choice in ProviderChoice.allCases where !sources.contains(where: { $0.choice == choice }) {
+        // Only services the runner actually added. An authorization on its own doesn't
+        // mean they connected anything: the media-library grant is a system permission
+        // that can already be in place, and restoring on that alone silently added an
+        // Apple Music source nobody asked for — which then suppressed the "add your
+        // music" prompt, because something was technically connected.
+        for choice in storedConnected() where !sources.contains(where: { $0.choice == choice }) {
             let provider = makeProvider(for: choice)
             guard await provider.isAuthorized else { continue }
             _ = await connect(choice, using: provider)
         }
+    }
+
+    // MARK: - Which services the runner connected
+
+    private static let connectedSourcesKey = "music.sources.connected"
+
+    private func storedConnected() -> [ProviderChoice] {
+        (UserDefaults.standard.stringArray(forKey: Self.connectedSourcesKey) ?? [])
+            .compactMap(ProviderChoice.init(rawValue:))
+    }
+
+    private func rememberConnected(_ choice: ProviderChoice) {
+        var stored = storedConnected().map(\.rawValue)
+        guard !stored.contains(choice.rawValue) else { return }
+        stored.append(choice.rawValue)
+        UserDefaults.standard.set(stored, forKey: Self.connectedSourcesKey)
+    }
+
+    private func forgetConnected(_ choice: ProviderChoice) {
+        let stored = storedConnected().map(\.rawValue).filter { $0 != choice.rawValue }
+        UserDefaults.standard.set(stored, forKey: Self.connectedSourcesKey)
     }
 
     /// Every connected service. Connecting ADDS a source — it never replaces one —
@@ -81,8 +107,8 @@ final class AppCoordinator: ObservableObject {
     @Published private(set) var sources: [ConnectedMusicSource] = []
 
     /// The unified library: every enabled source folded into one, deduped by
-    /// recording (`LibraryAggregator`), with the demo catalog as the fallback when
-    /// connected sources yield nothing usable.
+    /// recording (`LibraryAggregator`). The runner's own music only — nothing is
+    /// substituted when it's empty.
     @Published private(set) var library: [Track] = []
     /// Track id → recording id over EVERY connected source (enabled or not), so what
     /// the app learns through one copy of a song applies to its duplicates in other
@@ -165,9 +191,22 @@ final class AppCoordinator: ObservableObject {
         if fetchError != nil {
             // Keep the failure as the note; a tempo caveat is beside the point when the
             // library didn't load at all.
-        } else if let spotify = provider as? SpotifyProvider, await spotify.bpmUnavailable() {
-            note = "Spotify doesn't share track tempo with new apps, so Dromo is working "
-                + "out the tempo of your songs itself. They'll start pacing runs as it does."
+        } else if let spotify = provider as? SpotifyProvider {
+            // The plan matters more than the tempo caveat: a free account's songs can be
+            // read and paced against, but Spotify won't let any app start playback, so
+            // saying so here beats letting the runner discover it by tapping a song and
+            // hearing nothing.
+            var parts: [String] = []
+            if await spotify.accountIsPremium() == false {
+                parts.append("Spotify only lets apps start playback for Premium accounts, "
+                    + "so Dromo can read this library but can't play it. Connect Apple "
+                    + "Music to hear your runs.")
+            }
+            if await spotify.bpmUnavailable() {
+                parts.append("Spotify doesn't share track tempo with new apps, so Dromo is "
+                    + "working out the tempo of your songs itself.")
+            }
+            note = parts.isEmpty ? nil : parts.joined(separator: " ")
         } else if let apple = provider as? AppleMusicProvider {
             if apple.lastLibraryWasEmpty {
                 note = "No Apple Music library is available here (expected in the Simulator)."
@@ -185,6 +224,7 @@ final class AppCoordinator: ObservableObject {
         } else {
             sources.append(source)
         }
+        rememberConnected(choice)
         rebuildLibrary()
         // Note: connect() no longer drives navigation — sign-in owns entry to the
         // tabs. It's called from the post-sign-in popup and the You-tab integrations
@@ -217,6 +257,7 @@ final class AppCoordinator: ObservableObject {
             spotify.auth.signOut()
         }
         sources.removeAll { $0.choice == choice }
+        forgetConnected(choice)
         storeEnabled(choice, true)
         rebuildLibrary()
     }
@@ -249,10 +290,37 @@ final class AppCoordinator: ObservableObject {
         // are all duplicates of another's, say. The ledger makes a restart cheap rather
         // than wasteful (attempted tracks are already recorded and get skipped), but an
         // in-flight request dropped for nothing is still worth avoiding.
+        // Tempo already worked out on a previous launch is applied before anything is
+        // looked up again. Providers hand back the same untagged library every time, so
+        // without this the cache — which is durable, and which the run pool has always
+        // read — was invisible to everything the runner browses, and each launch looked
+        // like the tempo profile was being built from scratch.
+        Task { await applyCachedTempo() }
+
         let ids = Set(merged.map(\.id))
         guard ids != enrichedLibraryIDs else { return }
         enrichedLibraryIDs = ids
         startEnrichment(for: merged)
+    }
+
+    /// Fold cached tempo into the browsable library, keyed by recording so a value
+    /// learned through one service's copy of a song serves the others.
+    private func applyCachedTempo() async {
+        // Expanded through the alias map, the same way the run pool reads it: a tempo
+        // cached under a recording reaches whichever service's copy is in the library.
+        let enriched = recordingAliases.expanded(await EnrichedBPMStore().all())
+        guard !enriched.isEmpty else { return }
+
+        var changed = false
+        let updated = library.map { track -> Track in
+            guard track.bpm <= 0, let bpm = enriched[track.id], bpm > 0 else { return track }
+            changed = true
+            return Track(id: track.id, title: track.title, artist: track.artist,
+                         bpm: bpm, energyLevel: track.energyLevel,
+                         durationSeconds: track.durationSeconds, provider: track.provider)
+        }
+        guard changed else { return }
+        library = updated
     }
 
     /// The library the current enrichment pass was started for.
@@ -300,6 +368,7 @@ final class AppCoordinator: ObservableObject {
         // the previous runner's Spotify library.
         for source in sources {
             (source.provider as? SpotifyProvider)?.auth.signOut()
+            forgetConnected(source.choice)
         }
         sources = []
         router = nil
@@ -390,6 +459,9 @@ final class AppCoordinator: ObservableObject {
                 self?.enrichmentProgress = nil
                 self?.lastEnrichmentResult = result
             }
+            // Fold what the pass just resolved into the browsable library, so tempo
+            // shows up as it's learned instead of only after the next launch.
+            await self?.applyCachedTempo()
         }
     }
 

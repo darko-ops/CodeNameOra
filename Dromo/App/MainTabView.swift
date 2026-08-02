@@ -42,6 +42,16 @@ struct MainTabView: View {
                     .padding(.bottom, 52)   // sit just above the tab bar
             }
         }
+        // A tap that produces no sound has to say why. Spotify playback runs through the
+        // runner's own Spotify app, which can be asleep or unavailable, and silence with
+        // no explanation is indistinguishable from a broken app.
+        .alert("Can't play that yet",
+               isPresented: Binding(get: { nowPlaying.playbackError != nil },
+                                    set: { if !$0 { nowPlaying.playbackError = nil } })) {
+            Button("OK", role: .cancel) { nowPlaying.playbackError = nil }
+        } message: {
+            Text(nowPlaying.playbackError ?? "")
+        }
         .sheet(isPresented: $nowPlaying.isExpanded) {
             NowPlayingView()
         }

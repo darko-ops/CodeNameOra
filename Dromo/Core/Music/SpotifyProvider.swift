@@ -47,6 +47,12 @@ final class SpotifyProvider: MusicProviderProtocol {
         await api.lastAudioFeaturesForbidden
     }
 
+    /// Whether this account can be played through at all. Nil if the plan couldn't be
+    /// read — treated as "don't claim either way" rather than guessed.
+    func accountIsPremium() async -> Bool? {
+        await api.accountIsPremium()
+    }
+
     func play(track: Track) async throws {
         #if canImport(SpotifyiOS)
         let token = try await auth.validAccessToken()

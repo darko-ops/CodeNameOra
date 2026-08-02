@@ -24,6 +24,8 @@ enum SpotifyConfig {
 enum SpotifyError: LocalizedError {
     case notConfigured
     case notAuthenticated
+    case noActiveDevice
+    case premiumRequired
     case cancelled
     case cannotStartSession
     case stateMismatch
@@ -34,6 +36,15 @@ enum SpotifyError: LocalizedError {
         switch self {
         case .notConfigured:     return "No SPOTIFY_CLIENT_ID set. Add it to Secrets.xcconfig."
         case .notAuthenticated:  return "Not signed in to Spotify."
+        case .noActiveDevice:
+            return "Open Spotify and start playing anything for a moment, then come "
+                + "back — Dromo plays through your Spotify app, and it has to be awake."
+        case .premiumRequired:
+            // Not something the app can work around: Spotify only exposes playback
+            // control to Premium accounts, for both the Web API and the App Remote SDK.
+            return "Spotify only lets apps start playback for Premium accounts. Your "
+                + "saved songs still count towards your library and their tempo — but "
+                + "to hear them on a run, play through Apple Music or Spotify Premium."
         case .cancelled:         return "Spotify sign-in was cancelled."
         case .cannotStartSession:return "Couldn't start the Spotify sign-in session."
         case .stateMismatch:     return "Spotify auth state mismatch (possible CSRF)."

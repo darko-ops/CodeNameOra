@@ -12,6 +12,14 @@ public struct Track: Identifiable, Codable, Equatable {
 
     public enum MusicProvider: String, Codable {
         case appleMusic, spotify
+
+        /// The service's own name, for anything the runner reads.
+        public var displayName: String {
+            switch self {
+            case .appleMusic: return "Apple Music"
+            case .spotify:    return "Spotify"
+            }
+        }
     }
 
     public init(
