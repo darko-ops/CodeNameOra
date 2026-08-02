@@ -18,7 +18,8 @@ final class LibraryCoverageModel: ObservableObject {
     @Published var allowsCellular: Bool = EnrichmentGate.shared.allowsCellular {
         didSet {
             EnrichmentGate.shared.allowsCellular = allowsCellular
-            pausedReason = EnrichmentGate.shared.pausedReason
+            pausedReason = TempoSources.current().unavailableReason
+                ?? EnrichmentGate.shared.pausedReason
         }
     }
 
@@ -39,7 +40,11 @@ final class LibraryCoverageModel: ObservableObject {
                          providerBPM: $0.bpm > 0 ? $0.bpm : (bpmByID[$0.id] ?? 0))
         }
         coverage = LibraryCoverage.measure(entries: entries)
-        pausedReason = EnrichmentGate.shared.pausedReason
+        // A missing tempo source outranks a connectivity pause: waiting or switching to
+        // Wi-Fi cannot fix "there is nothing to ask", so saying "paused — no connection"
+        // would send the runner after the wrong thing.
+        pausedReason = TempoSources.current().unavailableReason
+            ?? EnrichmentGate.shared.pausedReason
     }
 }
 

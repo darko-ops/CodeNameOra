@@ -13,6 +13,16 @@ enum LibrarySync {
         return URL(string: "http://localhost:8000")!
     }
 
+    /// Whether the Global Track Table is actually reachable from where the app is
+    /// running. The default base URL is localhost, which on a phone is the phone — so an
+    /// unset `DROMO_API` means there is no track table to ask, not merely a slow one.
+    /// Treating it as a live source is what let a build with no tempo source at all look
+    /// like one that was simply still working.
+    static var isConfigured: Bool {
+        guard let host = baseURL.host else { return false }
+        return !["localhost", "127.0.0.1", "::1"].contains(host)
+    }
+
     /// Builds a coordinator wired to the real client, cache, and analyzer.
     /// `urlForItem` maps a library item back to its analyzable file URL (e.g. an
     /// `MPMediaItem.assetURL`); the live library flow provides it in Phase 5.

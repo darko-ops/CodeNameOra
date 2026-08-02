@@ -401,22 +401,35 @@ final class AppCoordinator: ObservableObject {
     /// Spotify is last on purpose: audio-features is restricted for new apps and may
     /// disappear (see memory: spotify-bpm-restriction).
     private func startEnrichment(for tracks: [Track]) {
+        // Nothing to ask, so don't ask. The pass only ever sees tracks whose tempo is
+        // already 0, which means the platform's own tag has failed for them — so with no
+        // remote source configured the chain cannot answer for a single track, and
+        // running it just burns the ledger's retry budget against a wall. The coverage
+        // card says so rather than leaving the runner watching a tally that never moves.
+        let available = TempoSources.current()
+        guard available.canLookUpTempo else {
+            enrichmentProgress = nil
+            return
+        }
+
         // Captured before the closure so identity resolution doesn't hop the main actor
         // for every track it checks. The router sends each track's ISRC lookup to the
         // service that owns it, so a mixed library enriches correctly.
         let provider: MusicProviderProtocol? = self.router
-        var sources: [BPMSourcing] = [
+        var sources: [BPMSourcing] = []
+        if available.hasTrackTable {
             // 1. Someone already measured this recording — one cheap request, best value.
             //    `Track` carries no ISRC, so identity is resolved lazily inside the
             //    source: only for tracks that actually reach a lookup.
-            TrackTableBPMSource(api: HTTPTrackTableClient(baseURL: LibrarySync.baseURL),
-                                cache: GRDBTrackFactsCache(),
-                                resolveIdentity: { id in
-                                    await provider?.catalogISRC(forTrackID: id)
-                                }),
-            // 2. The tempo the platform handed us for free (MPMediaItem.beatsPerMinute).
-            ProviderTagSource(),
-        ]
+            sources.append(
+                TrackTableBPMSource(api: HTTPTrackTableClient(baseURL: LibrarySync.baseURL),
+                                    cache: GRDBTrackFactsCache(),
+                                    resolveIdentity: { id in
+                                        await provider?.catalogISRC(forTrackID: id)
+                                    }))
+        }
+        // 2. The tempo the platform handed us for free (MPMediaItem.beatsPerMinute).
+        sources.append(ProviderTagSource())
         if !Config.getSongBPMKey.isEmpty {
             sources.append(LegacyBPMSource(source: .getSongBPM,
                                            lookup: GetSongBPMClient(apiKey: Config.getSongBPMKey)))
