@@ -2,10 +2,22 @@ import XCTest
 
 /// Phase 0 launch smoke test.
 final class DromoLaunchUITests: XCTestCase {
+    /// The app comes up and puts its own name on screen.
+    ///
+    /// Matches any element type rather than a `staticText` specifically: the brand
+    /// appears as plain text on the auth screen but as the mark-and-wordmark lockup once
+    /// signed in, where the visible string is "DROMO" and "Dromo" is the accessibility
+    /// label on the element wrapping it. Which of those a launch lands on depends on
+    /// whether a session is stored, and this test is about the app starting at all.
     func test_appLaunches() {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts["Dromo"].waitForExistence(timeout: 10))
+
+        let branded = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label ==[c] 'Dromo'")).firstMatch
+        XCTAssertTrue(branded.waitForExistence(timeout: 10),
+                      "Launched without showing the app's name anywhere")
+        XCTAssertEqual(app.state, .runningForeground)
     }
 }
 

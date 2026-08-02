@@ -116,6 +116,20 @@ final class DesignScreenshotUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
     }
 
+    /// The new ways into music integrations.
+    func test_captureIntegrationEntryPoints() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-dromo.session.email", "design@dromo.test"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 20))
+        Thread.sleep(forTimeInterval: 2)
+        shoot(app, "20-home-connect")
+
+        app.buttons["You"].tap()
+        Thread.sleep(forTimeInterval: 2)
+        shoot(app, "21-you-setup-rows")
+    }
+
     /// The live HUD, reached by starting a run from session setup.
     func test_captureLiveHUD() {
         let app = XCUIApplication()

@@ -12,6 +12,7 @@ struct LibraryView: View {
         var id: String { rawValue }
     }
 
+    @EnvironmentObject private var coordinator: AppCoordinator
     @StateObject private var vm = LibraryViewModel()
     @State private var tab: YouTab = .momentum
     @Environment(\.dismiss) private var dismiss
@@ -77,10 +78,91 @@ struct LibraryView: View {
 
     private var momentumView: some View {
         ScrollView {
-            DashboardView(stats: vm.stats)
-                .padding(.horizontal, Spacing.screen)
-                .padding(.vertical, Spacing.md)
+            VStack(spacing: Spacing.xl) {
+                DashboardView(stats: vm.stats)
+                setupSection
+            }
+            .padding(.horizontal, Spacing.screen)
+            .padding(.vertical, Spacing.md)
         }
+    }
+
+    // MARK: - Setup
+
+    /// Named rows for the things the You tab actually leads to.
+    ///
+    /// These were reachable only through two unlabelled glyphs in the leading toolbar —
+    /// where iOS puts the back button — so connecting a music service, the thing a new
+    /// runner most needs to do, was effectively hidden. The toolbar shortcuts stay for
+    /// the other sub-tabs; this is the discoverable path.
+    private var setupSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            OraLabel("Setup")
+
+            VStack(spacing: 0) {
+                NavigationLink(destination: MusicIntegrationsView()) {
+                    row(icon: "music.note",
+                        title: "Music services",
+                        detail: musicDetail,
+                        // The one row that can be in an unfinished state, so it says so:
+                        // an empty library is the difference between a working app and
+                        // one that silently has nothing to play.
+                        highlight: coordinator.sources.isEmpty)
+                }
+                .buttonStyle(.plain)
+
+                Divider()
+                    .overlay(Color.oraSurfaceElevated)
+                    .padding(.leading, Spacing.md + 34 + Spacing.md)
+
+                NavigationLink(destination: LearnedDataView()) {
+                    row(icon: "brain",
+                        title: "What Dromo has learned",
+                        detail: "Your taste, and what it does with it",
+                        highlight: false)
+                }
+                .buttonStyle(.plain)
+            }
+            .oraCard(padding: nil)
+        }
+    }
+
+    /// Says what's connected, so the row answers the question rather than only leading
+    /// somewhere that answers it.
+    private var musicDetail: String {
+        let connected = coordinator.sources.map(\.choice.rawValue)
+        guard !connected.isEmpty else { return "Nothing connected yet" }
+        return connected.joined(separator: " · ")
+    }
+
+    private func row(icon: String, title: String, detail: String,
+                     highlight: Bool) -> some View {
+        HStack(spacing: Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color.oraSurfaceElevated)
+                Image(systemName: icon)
+                    .font(.system(size: 15))
+                    .foregroundColor(highlight ? .zoneSteady : .oraTextSecondary)
+            }
+            .frame(width: 34, height: 34)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.oraTextPrimary)
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundColor(highlight ? .zoneSteady : .oraTextSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.oraTextMuted)
+        }
+        .padding(Spacing.md)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Sessions (recorded run logs)

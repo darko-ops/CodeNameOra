@@ -134,3 +134,59 @@ final class CoordinatorEnvironmentUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "App died opening the Sound tab")
     }
 }
+
+/// Cover for reaching the music integrations page at all.
+///
+/// It was reachable only through two unlabelled glyphs in the leading toolbar — where
+/// iOS puts the back button — so the thing a new runner most needs to do, connecting a
+/// service, was effectively hidden.
+final class MusicIntegrationsReachabilityUITests: XCTestCase {
+
+    private func launchSignedIn() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-dromo.session.email", "reach@dromo.test"]
+        app.launch()
+        return app
+    }
+
+    /// The named row in the You tab — the discoverable path.
+    func test_youTabHasANamedMusicServicesRow() {
+        let app = launchSignedIn()
+
+        XCTAssertTrue(app.buttons["You"].waitForExistence(timeout: 20), "You tab missing")
+        app.buttons["You"].tap()
+
+        let row = app.staticTexts["Music services"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8),
+                      "No labelled way into music integrations")
+        row.tap()
+
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertTrue(app.staticTexts["Music"].waitForExistence(timeout: 6)
+                      || app.buttons.containing(
+                        NSPredicate(format: "label CONTAINS 'Apple Music'")).firstMatch.exists,
+                      "The row did not open music integrations")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// The Home prompt — the landing screen used to be a dead end with nothing connected.
+    func test_homeOffersAWayToConnectWhenNothingIsConnected() {
+        let app = launchSignedIn()
+
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 20), "Home tab missing")
+        app.buttons["Home"].tap()
+        Thread.sleep(forTimeInterval: 1.5)
+
+        let connect = app.buttons["Connect a music service"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 6),
+                      "Home gives a new runner no way to connect music")
+        connect.tap()
+
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertTrue(app.staticTexts["Music"].waitForExistence(timeout: 6)
+                      || app.buttons.containing(
+                        NSPredicate(format: "label CONTAINS 'Apple Music'")).firstMatch.exists,
+                      "The Home prompt did not open music integrations")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+}
