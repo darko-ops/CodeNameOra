@@ -10,7 +10,24 @@ enum SpotifyConfig {
     static let callbackScheme = "dromo"
 
     /// Library read + playback control (App Remote / Web playback).
-    static let scopes = "user-library-read user-read-playback-state user-modify-playback-state streaming"
+    ///
+    /// `user-library-read` covers saved songs and saved albums, but playlists need their
+    /// own grants — without these two, `/me/playlists` answers 403 and the playlist
+    /// shelf comes back silently empty.
+    static let scopes = [
+        "user-library-read",
+        "playlist-read-private",
+        "playlist-read-collaborative",
+        "user-read-playback-state",
+        "user-modify-playback-state",
+        "streaming",
+    ].joined(separator: " ")
+
+    /// Bumped when `scopes` changes. A token minted under the old set is still valid and
+    /// refreshes happily, but it carries the old grants — so it would keep 403ing on
+    /// playlists forever with nothing to indicate why. Comparing this against what was
+    /// stored at sign-in is what triggers a re-authorization.
+    static let scopeVersion = 2
 
     static let authorizeEndpoint = URL(string: "https://accounts.spotify.com/authorize")!
     static let tokenEndpoint = URL(string: "https://accounts.spotify.com/api/token")!
@@ -30,6 +47,7 @@ enum SpotifyError: LocalizedError {
     case cannotStartSession
     case stateMismatch
     case authFailed(String)
+    case rateLimited(retryAfter: Double)
     case http(Int, String)
 
     var errorDescription: String? {
@@ -49,6 +67,8 @@ enum SpotifyError: LocalizedError {
         case .cannotStartSession:return "Couldn't start the Spotify sign-in session."
         case .stateMismatch:     return "Spotify auth state mismatch (possible CSRF)."
         case .authFailed(let m): return "Spotify authorization failed: \(m)."
+        case .rateLimited(let after):
+            return "Spotify is limiting requests — retrying in \(Int(after))s."
         case .http(let code, let m): return "Spotify API error \(code): \(m)."
         }
     }

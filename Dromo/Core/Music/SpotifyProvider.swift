@@ -39,7 +39,9 @@ final class SpotifyProvider: MusicProviderProtocol {
     }
 
     func fetchLibraryTracks() async throws -> [Track] {
-        try await api.savedTracks()
+        // The whole library — saved songs, saved albums and playlists — not just the
+        // saved-songs shelf, which is a fraction of what most people keep.
+        try await api.libraryTracks()
     }
 
     /// True if the last library fetch couldn't read tempo (Spotify BPM restricted).

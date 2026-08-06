@@ -1,5 +1,12 @@
 import SwiftUI
+import os
 import DromoCore
+
+/// Traces how the unified library is assembled — what each service contributed, what
+/// survived deduplication, and how much of it carries a tempo.
+///
+///     Console.app → filter subsystem `com.daed.dromo`, category `library`
+private let coordinatorLog = Logger(subsystem: "com.daed.dromo", category: "library")
 
 /// One connected music service: its live provider, the library it contributed, and
 /// whether the runner currently has it toggled into the unified library. Connections
@@ -38,6 +45,27 @@ final class AppCoordinator: ObservableObject {
             case .spotify: return .spotify
             }
         }
+
+        /// Whether to offer this service at all.
+        ///
+        /// Spotify is hidden rather than deleted. It can supply a track list and
+        /// nothing else: playback needs Premium *and* an API grant the app doesn't
+        /// have, tempo comes back restricted, and playlist reads are reserved for
+        /// launched services at scale. For an app that exists to play tempo-matched
+        /// music, a source that can neither report tempo nor play is worse than absent —
+        /// it fills the library with songs that do nothing when tapped.
+        ///
+        /// The integration stays in the codebase behind this flag, so if that access
+        /// ever changes it is one line to bring back rather than a rewrite.
+        var isOffered: Bool {
+            switch self {
+            case .appleMusic: return true
+            case .spotify: return false
+            }
+        }
+
+        /// The services the runner can actually choose.
+        static var offered: [ProviderChoice] { allCases.filter(\.isOffered) }
     }
 
     /// Local mock auth (swappable for a real backend behind the same surface).
@@ -74,9 +102,27 @@ final class AppCoordinator: ObservableObject {
         // that can already be in place, and restoring on that alone silently added an
         // Apple Music source nobody asked for — which then suppressed the "add your
         // music" prompt, because something was technically connected.
-        for choice in storedConnected() where !sources.contains(where: { $0.choice == choice }) {
+        // A service that is no longer offered is retired rather than restored. Someone
+        // who connected Spotify before it was withdrawn would otherwise keep a library
+        // of songs the app cannot play — present in every list, silent on every tap —
+        // which is worse than not having connected it.
+        for retired in storedConnected() where !retired.isOffered {
+            coordinatorLog.notice("\(retired.rawValue, privacy: .public) is no longer offered — retiring the connection")
+            disconnect(retired)
+        }
+
+        let remembered = storedConnected()
+        coordinatorLog.notice("restoring: \(remembered.map(\.rawValue).joined(separator: ", "), privacy: .public)")
+
+        for choice in remembered where !sources.contains(where: { $0.choice == choice }) {
             let provider = makeProvider(for: choice)
-            guard await provider.isAuthorized else { continue }
+            guard await provider.isAuthorized else {
+                // The common cause is a token that predates a scope change: still
+                // valid, but missing grants the app now needs, so it has to be
+                // re-authorized rather than silently under-permissioned.
+                coordinatorLog.notice("\(choice.rawValue, privacy: .public) needs re-authorizing — connect it again")
+                continue
+            }
             _ = await connect(choice, using: provider)
         }
     }
@@ -171,8 +217,30 @@ final class AppCoordinator: ObservableObject {
 
     /// The body of `connect`, taking the provider so a launch-time restore can reuse
     /// the instance it already asked about rather than building a second one.
+    /// Connects in flight, so a second request for the same service joins the first
+    /// instead of starting a parallel read.
+    ///
+    /// A launch can ask twice — the restore and the connect button, or two views
+    /// appearing at once — and each one used to run the whole library fetch. Against an
+    /// API with a request budget that is not merely wasteful: two concurrent reads of a
+    /// large library are what exhaust it.
+    private var connectsInFlight: [ProviderChoice: Task<Bool, Never>] = [:]
+
     private func connect(_ choice: ProviderChoice,
                          using provider: MusicProviderProtocol) async -> Bool {
+        if let existing = connectsInFlight[choice] {
+            coordinatorLog.notice("\(choice.rawValue, privacy: .public) already connecting — joining that read")
+            return await existing.value
+        }
+        let task = Task<Bool, Never> { await performConnect(choice, using: provider) }
+        connectsInFlight[choice] = task
+        let result = await task.value
+        connectsInFlight[choice] = nil
+        return result
+    }
+
+    private func performConnect(_ choice: ProviderChoice,
+                                using provider: MusicProviderProtocol) async -> Bool {
         guard await provider.requestAuthorization() else { return false }
 
         // A failed fetch is reported, not swallowed. Silently substituting an empty
@@ -181,9 +249,15 @@ final class AppCoordinator: ObservableObject {
         var tracks: [Track] = []
         do {
             tracks = try await provider.fetchLibraryTracks()
+            let tagged = tracks.filter { $0.bpm > 0 }.count
+            coordinatorLog.notice("\(choice.rawValue, privacy: .public): \(tracks.count, privacy: .public) tracks, \(tagged, privacy: .public) with tempo")
+            if tracks.isEmpty {
+                coordinatorLog.notice("\(choice.rawValue, privacy: .public) returned an empty library — authorized, but nothing to read")
+            }
         } catch {
             fetchError = "Couldn't read your \(choice.rawValue) library: "
                 + error.localizedDescription
+            coordinatorLog.error("\(choice.rawValue, privacy: .public) fetch failed: \(String(describing: error), privacy: .public)")
         }
 
         // Surface why tempo may be missing, per provider.
@@ -203,8 +277,16 @@ final class AppCoordinator: ObservableObject {
                     + "Music to hear your runs.")
             }
             if await spotify.bpmUnavailable() {
-                parts.append("Spotify doesn't share track tempo with new apps, so Dromo is "
-                    + "working out the tempo of your songs itself.")
+                parts.append("Spotify doesn't share track tempo, so Dromo works it out "
+                    + "for your songs itself.")
+            }
+            if SpotifyWebAPI.playlistsRestricted {
+                // Stated plainly rather than as a temporary condition: Spotify reserves
+                // this access for large launched services, so it will not resolve by
+                // waiting or reconnecting, and implying otherwise sends the runner
+                // looking for a setting that does not exist.
+                parts.append("Spotify doesn't open playlists to apps this size, so your "
+                    + "saved songs and albums are what Dromo can see here.")
             }
             note = parts.isEmpty ? nil : parts.joined(separator: " ")
         } else if let apple = provider as? AppleMusicProvider {
@@ -267,6 +349,13 @@ final class AppCoordinator: ObservableObject {
         let enabled = sources.filter(\.isEnabled)
         let merged = LibraryAggregator.merged(enabled.map(\.tracks))
         let notes = enabled.compactMap(\.note)
+
+        // Per source and after folding, because the gap between them is the duplicate
+        // count — the same song owned in two services — and a surprising drop there is
+        // the aggregator misjudging two recordings as one.
+        let perSource = enabled.map { "\($0.choice.rawValue) \($0.tracks.count)" }
+            .joined(separator: ", ")
+        coordinatorLog.notice("rebuild: [\(perSource, privacy: .public)] → \(merged.count, privacy: .public) unified, \(merged.filter { $0.bpm > 0 }.count, privacy: .public) with tempo")
 
         // The library is the runner's own music and nothing else. There was a fallback
         // here that substituted a demo catalog whenever a connected source yielded

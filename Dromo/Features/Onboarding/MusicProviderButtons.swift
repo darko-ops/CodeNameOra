@@ -14,13 +14,14 @@ struct MusicProviderButtons: View {
 
     var body: some View {
         VStack(spacing: Spacing.md) {
-            // Apple Music was already white, so it now literally shares the light
-            // primary token with every other CTA. Spotify green is a brand colour and
-            // is exempt from the muting (spec 1.2).
-            button(.appleMusic, system: "applelogo",
-                   background: .oraButtonFill, foreground: .oraButtonText)
-            button(.spotify, system: "music.note",
-                   background: Color(hex: "#1DB954"), foreground: .black)
+            // Driven by what the app actually offers, so withdrawing a service is one
+            // flag rather than an edit here — and a service that can't play music never
+            // appears as a choice.
+            ForEach(AppCoordinator.ProviderChoice.offered, id: \.rawValue) { choice in
+                button(choice, system: Self.symbol(for: choice),
+                       background: Self.background(for: choice),
+                       foreground: Self.foreground(for: choice))
+            }
 
             if failed {
                 Text("Couldn't connect. Tap to try again.")
@@ -49,6 +50,30 @@ struct MusicProviderButtons: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .disabled(connecting != nil)
+    }
+
+    /// Apple Music takes the shared light primary token; Spotify keeps its brand green,
+    /// which the design language exempts from muting (spec 1.2). Kept for the day the
+    /// integration is offered again.
+    private static func symbol(for choice: AppCoordinator.ProviderChoice) -> String {
+        switch choice {
+        case .appleMusic: return "applelogo"
+        case .spotify:    return "music.note"
+        }
+    }
+
+    private static func background(for choice: AppCoordinator.ProviderChoice) -> Color {
+        switch choice {
+        case .appleMusic: return .oraButtonFill
+        case .spotify:    return Color(hex: "#1DB954")
+        }
+    }
+
+    private static func foreground(for choice: AppCoordinator.ProviderChoice) -> Color {
+        switch choice {
+        case .appleMusic: return .oraButtonText
+        case .spotify:    return .black
+        }
     }
 
     private func isConnected(_ choice: AppCoordinator.ProviderChoice) -> Bool {

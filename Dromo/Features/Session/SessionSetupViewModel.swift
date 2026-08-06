@@ -83,7 +83,7 @@ final class SessionSetupViewModel: ObservableObject {
         UserSettings(
             defaultPaceSecondsPerKm: targetPaceSecondsPerKm,
             bpmSensitivity: sensitivity,
-            preferredProvider: .spotify,
+            preferredProvider: .appleMusic,   // the service the app offers
             useMetric: useMetric
         )
     }

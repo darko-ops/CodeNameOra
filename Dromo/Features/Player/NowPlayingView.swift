@@ -213,7 +213,9 @@ struct NowPlayingView: View {
             Divider().overlay(Color.oraSurfaceElevated)
             statRow("Duration", PaceMath.clock(Double(track.durationSeconds)), .oraTextPrimary)
             Divider().overlay(Color.oraSurfaceElevated)
-            statRow("Source", track.provider == .spotify ? "Spotify" : "Apple Music", .oraTextSecondary)
+            // Reads the track's own provider rather than assuming: a library can still
+            // hold tracks from a service the app has since stopped offering.
+            statRow("Source", track.provider.displayName, .oraTextSecondary)
         }
         .padding(Spacing.md)
         .background(Color.oraSurface)

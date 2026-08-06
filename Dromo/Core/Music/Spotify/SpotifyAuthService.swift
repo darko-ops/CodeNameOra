@@ -16,7 +16,20 @@ final class SpotifyAuthService: NSObject {
     private var webSession: ASWebAuthenticationSession?
     private var presentationProvider: AuthPresentationProvider?
 
-    var isAuthenticated: Bool { loadTokens() != nil }
+    var isAuthenticated: Bool { loadTokens() != nil && grantsAreCurrent }
+
+    /// Which scope set the stored token was minted under.
+    private let scopeVersionKey = "spotify.scopeVersion"
+
+    /// Whether the stored token carries the grants the app now needs.
+    ///
+    /// A token minted under an older scope set stays valid and refreshes happily — it
+    /// simply lacks the newer permissions, so the calls that need them 403 forever with
+    /// nothing to say why. Reporting it as un-authenticated sends the runner back
+    /// through sign-in once, which is the only way to widen a grant.
+    var grantsAreCurrent: Bool {
+        UserDefaults.standard.integer(forKey: scopeVersionKey) >= SpotifyConfig.scopeVersion
+    }
 
     // MARK: - Authorization
 
@@ -126,6 +139,9 @@ final class SpotifyAuthService: NSObject {
     }
 
     private func store(_ response: SpotifyTokenResponse) {
+        // Record the grants this token was minted under, so a later scope change can
+        // tell that it needs re-authorizing rather than silently under-permissioned.
+        UserDefaults.standard.set(SpotifyConfig.scopeVersion, forKey: scopeVersionKey)
         let tokens = SpotifyTokens(
             accessToken: response.access_token,
             refreshToken: response.refresh_token,
