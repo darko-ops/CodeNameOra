@@ -21,63 +21,56 @@ final class DromoLaunchUITests: XCTestCase {
     }
 }
 
-/// Drives the full demo flow: Connect Spotify → Setup → Active session, and
-/// verifies the music-coaching status reacts to pace. Captures a screenshot at
-/// each stage (exported from the result bundle for visual verification).
+/// Drives a run the way the app actually runs one: set a target, start, coach, end.
+///
+/// The previous version tested a flow that no longer exists — it opened by tapping
+/// "Connect Spotify", which the app stopped offering, and then asserted its way through
+/// `ActiveSessionView` and `PostRunSummaryView`. Those are reached only when
+/// `AppCoordinator.screen` becomes `.session`, which `startSession()` alone sets, and
+/// `startSession()` has no callers: `SessionSetupView` presents `LiveHUDView` as a full
+/// screen cover instead. So every assertion after the first was aimed at unreachable
+/// code, and the test failed on the first line for an unrelated reason — which is how it
+/// stayed red without anyone learning anything from it.
 final class DromoFlowUITests: XCTestCase {
 
-    func test_connectSetupAndAdaptiveSession() {
+    func test_setupAndRun() {
         let app = XCUIApplication()
+        // Past the auth screen. Signing in for real isn't drivable here — the
+        // create-account field is `.newPassword`, so iOS AutoFill intercepts typing.
+        app.launchArguments = ["-dromo.session.email", "flow@dromo.test"]
         app.launch()
 
-        // 1) Connect Spotify (mock auth).
-        let connect = app.buttons["Connect Spotify"]
-        XCTAssertTrue(connect.waitForExistence(timeout: 5), "Connect button missing")
-        connect.tap()
-
-        // 2) Setup screen.
+        // 1) Session setup.
+        XCTAssertTrue(app.buttons["Go"].waitForExistence(timeout: 20), "Never reached the tabs")
+        app.buttons["Go"].tap()
         let start = app.buttons["Start run"]
         XCTAssertTrue(start.waitForExistence(timeout: 8), "Setup screen not reached")
+        XCTAssertTrue(app.staticTexts["Set your target"].exists, "Setup header missing")
         snapshot(app, "01-setup")
+
+        guard start.isEnabled else {
+            // No library on this simulator, so there is nothing to pace a run with.
+            // Skipping beats asserting against a state the device can't produce.
+            XCTSkip("Start run disabled — no music library available here")
+            return
+        }
         start.tap()
 
-        // 3) Active HUD — after the 3-2-1 countdown, on-target reads ON PACE.
-        let onPace = app.staticTexts["ON PACE"]
-        XCTAssertTrue(onPace.waitForExistence(timeout: 12), "Active HUD / ON PACE not shown")
-        snapshot(app, "02-active-onpace")
+        // 2) The live HUD. Which coaching state shows depends on the simulated pace, so
+        //    the assertion is that it is coaching at all, not which way it leans.
+        let coaching = app.staticTexts.matching(
+            NSPredicate(format: "label IN {'ON PACE', 'SPEED UP', 'EASE'}")).firstMatch
+        XCTAssertTrue(coaching.waitForExistence(timeout: 20),
+                      "Live HUD never showed a coaching state")
+        XCTAssertTrue(app.staticTexts["CADENCE"].exists, "HUD is missing its cadence readout")
+        snapshot(app, "02-live-hud")
 
-        // 4) Slow the (simulated) runner down → Dromo should switch to PUSH.
-        let slower = app.buttons["Run slower"]
-        if slower.waitForExistence(timeout: 3) {
-            for _ in 0..<7 { slower.tap() }
-        }
-        let push = app.staticTexts["PUSH"]
-        XCTAssertTrue(push.waitForExistence(timeout: 18), "Did not reach PUSH after slowing down")
-        snapshot(app, "03-active-push")
-
-        // 5) End the run → post-run summary with chart + export.
-        app.buttons["End"].tap()
-        let complete = app.staticTexts["Run complete"]
-        XCTAssertTrue(complete.waitForExistence(timeout: 6), "Summary screen not shown")
-        XCTAssertTrue(app.staticTexts["PACE vs BPM"].waitForExistence(timeout: 3), "Chart missing")
-        XCTAssertTrue(app.staticTexts["EXPORT"].exists, "Export section missing")
-        // The row text is absorbed into the button's accessibility label.
-        let strava = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Strava")).firstMatch
-        let health = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Apple Health")).firstMatch
-        XCTAssertTrue(strava.exists, "Strava export row missing")
-        XCTAssertTrue(health.exists, "Health export row missing")
-        snapshot(app, "04-summary")
-
-        // 6) Open History → the run we just finished is persisted (GRDB).
-        app.buttons["View history"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["History"].waitForExistence(timeout: 5), "History not shown")
-        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 5), "Saved run not listed")
-        snapshot(app, "05-history")
-
-        // 7) Open its detail → reconstructed pace/BPM chart.
-        app.cells.firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["PACE vs BPM"].waitForExistence(timeout: 5), "Detail chart missing")
-        snapshot(app, "06-detail")
+        // 3) End it. With no track responses recorded the HUD dismisses straight back to
+        //    setup rather than presenting the run summary.
+        app.buttons["End"].firstMatch.tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "Ending the run did not return to setup")
+        XCTAssertEqual(app.state, .runningForeground)
+        snapshot(app, "03-back-to-setup")
     }
 
     private func snapshot(_ app: XCUIApplication, _ name: String) {
