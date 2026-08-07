@@ -334,7 +334,8 @@ struct LiveHUDView: View {
     // MARK: Pace-deviation overlay (6b)
 
     /// A central radial glow + message that fades in while the runner is outside the
-    /// ±20 s/km band — the visual companion to the beep. Distinct color per direction.
+    /// ±15 s/km band — the visual companion to the chime. Distinct color per direction.
+    /// Like the chime, it stays away until the runner has first reached the band.
     @ViewBuilder
     private var paceAlertOverlay: some View {
         if let alert = vm.paceAlert {

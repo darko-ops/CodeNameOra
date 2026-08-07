@@ -61,8 +61,9 @@ final class LiveSessionViewModel: ObservableObject {
     private let playback = CatalogPlaybackController()
     private var loop: LiveLoop?
 
-    /// Hard ±20 s/km pace alarm: beeps (slow vs fast) over ducked music, repeating
-    /// every 30 s while out of range. Separate from the engine's gentle music nudge.
+    /// Hard ±15 s/km pace alarm: chimes (slow vs fast) over ducked music, repeating
+    /// every 15 s while out of range, and silent until the runner first reaches the
+    /// band. Separate from the engine's gentle music nudge.
     private var paceAlerts = PaceAlertMonitor()
     private let alertPlayer = PaceAlertPlayer()
 
@@ -365,7 +366,7 @@ final class LiveSessionViewModel: ObservableObject {
                 self.state = s
                 let now = ProcessInfo.processInfo.systemUptime   // monotonic clock
 
-                // Hard pace-deviation alarm (±20 s/km), repeating every 30 s while out.
+                // Hard pace-deviation alarm (±15 s/km), repeating every 15 s while out.
                 if let alert = self.paceAlerts.evaluate(
                     currentPaceSecPerKm: s.currentPaceSecPerKm,
                     targetPaceSecPerKm: s.targetPaceSecPerKm,
