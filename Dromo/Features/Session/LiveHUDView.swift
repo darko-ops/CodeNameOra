@@ -39,9 +39,14 @@ struct LiveHUDView: View {
         .animation(.easeInOut(duration: 0.4), value: vm.paceAlert)
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showingSummary) {
-            LiveRunSummarySheet(responses: vm.runResponses, labels: vm.labelsByID) {
-                showingSummary = false
-                dismiss()
+            if let session = vm.finishedSession {
+                PostRunSummaryView(summary: RunSummary(session: session),
+                                   responses: vm.runResponses,
+                                   trackLabels: vm.labelsByID,
+                                   useMetric: true) {
+                    showingSummary = false
+                    dismiss()
+                }
             }
         }
         .onAppear { vm.start() }
@@ -72,7 +77,10 @@ struct LiveHUDView: View {
                 // Stop first so the final track's response is finalized and counted in
                 // the summary; without this the last (often longest) play is missing.
                 vm.stop()
-                if RunHighlights.isEmpty(vm.runResponses) { dismiss() } else { showingSummary = true }
+                // Shown whenever there is a run to describe, rather than only when a
+                // track earned a mention: distance, pace and the chart are worth seeing
+                // even on a run that taught Dromo nothing.
+                if vm.hasSummary { showingSummary = true } else { dismiss() }
             }
             .font(.system(size: 15, weight: .semibold))
             .foregroundColor(.oraTextSecondary)

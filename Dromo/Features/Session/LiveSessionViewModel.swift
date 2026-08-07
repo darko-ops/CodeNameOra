@@ -275,6 +275,10 @@ final class LiveSessionViewModel: ObservableObject {
         if var recorder {
             let session = recorder.finish(at: Date())
             self.recorder = nil
+            // Kept so the summary can describe the run that just happened. It was
+            // previously built, saved and dropped, which is why the post-run summary had
+            // nothing to read and could only be reached from a flow nothing used.
+            finishedSession = session
             if session.elapsedSeconds >= minRunSeconds {
                 let repo = sessionRepo
                 Task {
@@ -286,6 +290,19 @@ final class LiveSessionViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// The run just finished, for the summary. Nil until `stop()`.
+    @Published private(set) var finishedSession: Session?
+
+    /// Whether the run is worth summarising.
+    ///
+    /// A few seconds of an accidental open has no distance, no tempo and nothing
+    /// learned; a summary of it would be a screen of dashes. The same threshold decides
+    /// whether it is saved at all, so the summary and the history agree.
+    var hasSummary: Bool {
+        guard let finishedSession else { return false }
+        return finishedSession.elapsedSeconds >= minRunSeconds
     }
 
     // MARK: - Resolution

@@ -65,12 +65,30 @@ final class DromoFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["CADENCE"].exists, "HUD is missing its cadence readout")
         snapshot(app, "02-live-hud")
 
-        // 3) End it. With no track responses recorded the HUD dismisses straight back to
-        //    setup rather than presenting the run summary.
+        // 3) Run past the point where a run is worth describing.
+        //
+        //    `LiveSessionViewModel.minRunSeconds` is 30: below it a run is treated as an
+        //    accidental open, not saved, and not summarised. An earlier version of this
+        //    test ended immediately and passed — by taking that path and never seeing
+        //    the summary at all, which is precisely the thing it exists to check. The
+        //    wait is the cost of testing the real threshold instead of around it.
+        Thread.sleep(forTimeInterval: 33)
+
+        // 4) End it → the post-run summary.
         app.buttons["End"].firstMatch.tap()
-        XCTAssertTrue(start.waitForExistence(timeout: 10), "Ending the run did not return to setup")
+
+        let summary = app.staticTexts["Run complete"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 15),
+                      "A run past the threshold did not reach the summary")
+        XCTAssertTrue(app.staticTexts["Avg pace"].exists, "Summary is missing its stats")
+        XCTAssertTrue(app.staticTexts["Track changes"].exists, "Summary is missing its stats")
+        snapshot(app, "03-run-summary")
+
+        // 5) And a way out of it.
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "Done did not return to setup")
         XCTAssertEqual(app.state, .runningForeground)
-        snapshot(app, "03-back-to-setup")
+        snapshot(app, "04-back-to-setup")
     }
 
     private func snapshot(_ app: XCUIApplication, _ name: String) {

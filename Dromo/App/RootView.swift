@@ -27,9 +27,17 @@ struct RootView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             case .summary:
-                if let session = coordinator.session {
-                    PostRunSummaryView(session: session)
-                        .transition(.opacity)
+                // The `SessionController` route into the summary. Nothing reaches it
+                // today — `startSession()` has no callers, and a live run presents the
+                // same summary from `LiveHUDView` — but it stays wired so the two paths
+                // can't drift, and reads the recorded session rather than the
+                // controller, the same as everywhere else.
+                if let completed = coordinator.session?.completedSession {
+                    PostRunSummaryView(summary: RunSummary(session: completed),
+                                       useMetric: true) {
+                        coordinator.startOver()
+                    }
+                    .transition(.opacity)
                 }
             }
         }
